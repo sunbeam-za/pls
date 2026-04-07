@@ -1,8 +1,20 @@
+import Image from 'next/image'
+
 export default function Page() {
   return (
     <main className="page">
       <header className="topbar">
-        <span>pls / v0.1</span>
+        <span className="brand">
+          <Image
+            src="/sunbeam-logo.png"
+            alt="sunbeam"
+            width={22}
+            height={22}
+            className="brand-mark"
+            priority
+          />
+          pls / v0.1
+        </span>
         <span className="meta">an agent-native request library</span>
       </header>
 
@@ -219,7 +231,17 @@ export default function Page() {
 
       <footer className="foot">
         <span>built so the http your agents make stops being throwaway.</span>
-        <span>© 2026 — sunbeam</span>
+        <span className="brand">
+          © 2026 —{' '}
+          <Image
+            src="/sunbeam-logo.png"
+            alt="sunbeam"
+            width={16}
+            height={16}
+            className="brand-mark sm"
+          />
+          sunbeam
+        </span>
       </footer>
     </main>
   )
