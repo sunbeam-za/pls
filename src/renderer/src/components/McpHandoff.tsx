@@ -7,7 +7,13 @@
 // ever one network call per domain.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Copy, Sparkles, Star, X } from 'lucide-react'
+import { Check, Copy, X } from 'lucide-react'
+
+// The single glyph used everywhere the widget shows a brand mark. Unicode
+// rather than a lucide icon because a lucide Sparkles/Star is dense and
+// doesn't sit right at small sizes — the native emoji glyph is what the
+// design calls for.
+const SPARK = '✳'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -119,10 +125,8 @@ function BrandTile({
   return (
     <div
       className={cn(
-        'flex h-10 w-10 items-center justify-center overflow-hidden rounded-md ring-1 transition',
-        active
-          ? 'bg-background ring-primary/60'
-          : 'bg-background ring-white/10'
+        'flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl ring-1 transition',
+        active ? 'ring-primary/60' : 'ring-white/10'
       )}
     >
       {dataUrl ? (
@@ -130,7 +134,10 @@ function BrandTile({
           src={dataUrl}
           alt={client.name}
           draggable={false}
-          className="h-7 w-7 object-contain"
+          // The img itself is also rounded so vendors that ship a square
+          // PNG with a solid background (Windsurf, Cursor) get the same
+          // visual treatment as ones with transparency.
+          className="h-full w-full rounded-xl object-cover"
         />
       ) : dataUrl === null ? (
         // Network failed — show the vendor's first letter.
