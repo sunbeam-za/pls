@@ -13,25 +13,70 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Live feed: when a brand-new row appears, fade it in and briefly
-   highlight its background. Used by src/renderer/src/components/LiveFeed.tsx.
-   Referenced via tailwind's arbitrary animation utility, so the keyframe
-   has to live in plain CSS. */
+/* Live feed: when a brand-new row appears, fade it in and keep it
+   highlighted for a few seconds while breathing the background color.
+   Used by src/renderer/src/components/LiveFeed.tsx. Referenced via
+   tailwind's arbitrary animation utility, so the keyframes live in
+   plain CSS. */
 @keyframes liveFeedEnter {
   0% {
     opacity: 0;
     transform: translateY(-4px);
-    background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-primary) 80%, transparent);
   }
-  60% {
+  15% {
     opacity: 1;
     transform: translateY(0);
-    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    background-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-primary) 100%, transparent);
   }
   100% {
     opacity: 1;
     transform: translateY(0);
     background-color: transparent;
+    box-shadow: inset 2px 0 0 transparent;
+  }
+}
+
+/* Continuous breathing on the row currently being auto-followed. Subtle
+   — just a gentle background pulse so the eye always knows where the
+   "live" pointer is without it feeling frantic. */
+@keyframes liveFeedBreathe {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+}
+
+/* Sweep: a faint diagonal sheen that travels left→right across a new
+   row once, like a Workbench/Linear "I just happened" highlight. */
+@keyframes liveFeedSweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(150%);
+    opacity: 0;
+  }
+}
+
+/* The LIVE chip in the header. Slow, confident breathing so the whole
+   panel feels actively watched. */
+@keyframes liveChipPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, #10b981 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, #10b981 0%, transparent);
   }
 }
 
