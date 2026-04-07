@@ -1,4 +1,14 @@
-import { ChevronRight, FolderPlus, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import {
+  ChevronRight,
+  FileDown,
+  FolderPlus,
+  Link2,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Unlink
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
@@ -6,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -22,6 +33,18 @@ interface SidebarProps {
   onRenameRequest: (collectionId: string, requestId: string, name: string) => void
   onDeleteCollection: (collectionId: string) => void
   onDeleteRequest: (collectionId: string, requestId: string) => void
+  onImportOpenApi: () => void
+  onSyncOpenApi: (collectionId: string) => void
+  onUnlinkOpenApi: (collectionId: string) => void
+  syncingCollectionId: string | null
+}
+
+function formatSyncTime(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return `${Math.floor(diff / 86_400_000)}d ago`
 }
 
 const methodColor: Record<string, string> = {
@@ -44,7 +67,11 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
     onRenameCollection,
     onRenameRequest,
     onDeleteCollection,
-    onDeleteRequest
+    onDeleteRequest,
+    onImportOpenApi,
+    onSyncOpenApi,
+    onUnlinkOpenApi,
+    syncingCollectionId
   } = props
 
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -64,7 +91,19 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
           <div className="h-1.5 w-1.5 rounded-full bg-primary" />
           <span className="text-sm font-semibold tracking-tight">pls</span>
         </div>
-        <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div
+          className="flex items-center gap-0.5"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onImportOpenApi}
+            title="Import from OpenAPI"
+          >
+            <FileDown className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -99,7 +138,15 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
               </Button>
             </div>
           ) : (
-            collections.map((c) => (
+            collections.map((c) => {
+              const linked = c.openapi
+              const syncing = syncingCollectionId === c.id
+              // Only specs with a remembered source (URL or file path) can be
+              // re-synced. Pasted specs are a one-shot import.
+              const canResync = Boolean(
+                linked && (linked.sourceType === 'url' || linked.sourceType === 'file')
+              )
+              return (
               <div key={c.id} className="mb-1">
                 <div className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent">
                   <button
@@ -129,10 +176,20 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
                       />
                     ) : (
                       <span
-                        className="flex-1 truncate text-sm font-medium"
+                        className="flex flex-1 items-center gap-1.5 truncate text-sm font-medium"
                         onDoubleClick={() => setEditing(c.id)}
                       >
-                        {c.name}
+                        <span className="truncate">{c.name}</span>
+                        {linked && (
+                          <span
+                            title={`Linked to OpenAPI spec${
+                              linked.sourceLocation ? `: ${linked.sourceLocation}` : ''
+                            }\nLast synced ${formatSyncTime(linked.lastSyncedAt)}`}
+                            className="inline-flex shrink-0 items-center text-primary/70"
+                          >
+                            <Link2 className="h-3 w-3" />
+                          </span>
+                        )}
                       </span>
                     )}
                   </button>
@@ -159,6 +216,25 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
                         <DropdownMenuItem onClick={() => setEditing(c.id)}>
                           Rename
                         </DropdownMenuItem>
+                        {linked && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              disabled={!canResync || syncing}
+                              onClick={() => onSyncOpenApi(c.id)}
+                            >
+                              <RefreshCw
+                                className={cn('h-3.5 w-3.5', syncing && 'animate-spin')}
+                              />
+                              {syncing ? 'Syncing…' : 'Sync with spec'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onUnlinkOpenApi(c.id)}>
+                              <Unlink className="h-3.5 w-3.5" />
+                              Unlink from spec
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant="destructive"
                           onClick={() => onDeleteCollection(c.id)}
@@ -198,7 +274,8 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
                   </div>
                 )}
               </div>
-            ))
+              )
+            })
           )}
         </div>
       </ScrollArea>

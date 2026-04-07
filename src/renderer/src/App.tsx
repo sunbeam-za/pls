@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { Sidebar } from '@/components/Sidebar'
 import { RequestEditor } from '@/components/RequestEditor'
 import { ResponseViewer } from '@/components/ResponseViewer'
+import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import {
   newCollection,
   newRequest,
@@ -17,6 +18,7 @@ import {
   type RequestItem,
   type Store
 } from '@/lib/storage'
+import { resyncCollection } from '@/lib/openapi'
 import type { SendRequestResult } from '../../preload/index'
 
 function App(): React.JSX.Element {
@@ -26,6 +28,8 @@ function App(): React.JSX.Element {
   const [response, setResponse] = useState<SendRequestResult | null>(null)
   const [sending, setSending] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [syncingCollectionId, setSyncingCollectionId] = useState<string | null>(null)
   const persistTimer = useRef<number | null>(null)
 
   // Load on mount. Guard against StrictMode double-mount: a stale resolve
@@ -152,6 +156,78 @@ function App(): React.JSX.Element {
     [activeRequestId]
   )
 
+  const handleImportOpenApi = useCallback(() => setImportOpen(true), [])
+
+  const handleOpenApiImported = useCallback(
+    (collection: Collection, operationCount: number) => {
+      setCollections((prev) => [...prev, collection])
+      toast.success(
+        `Imported "${collection.name}" — ${operationCount} ${
+          operationCount === 1 ? 'request' : 'requests'
+        }`
+      )
+    },
+    []
+  )
+
+  const handleSyncOpenApi = useCallback(
+    async (collectionId: string) => {
+      const target = collections.find((c) => c.id === collectionId)
+      if (!target?.openapi) return
+      const link = target.openapi
+      if (link.sourceType !== 'url' && link.sourceType !== 'file') {
+        toast.error("Can't re-sync a pasted spec — re-import via URL or File")
+        return
+      }
+      setSyncingCollectionId(collectionId)
+      try {
+        const result =
+          link.sourceType === 'url' && link.sourceLocation
+            ? await window.api.loadSpecFromUrl(link.sourceLocation)
+            : await window.api.loadSpecFromFile()
+        if (!result.ok || !result.text) {
+          toast.error(result.error ?? 'Failed to load spec')
+          return
+        }
+        const sync = await resyncCollection(target, result.text)
+        setCollections((prev) => prev.map((c) => (c.id === collectionId ? sync.collection : c)))
+        // Succinct summary of what actually moved.
+        const parts = [
+          sync.added && `${sync.added} added`,
+          sync.updated && `${sync.updated} updated`,
+          sync.removed && `${sync.removed} orphaned`,
+          sync.conflicts && `${sync.conflicts} kept local`
+        ].filter(Boolean) as string[]
+        if (parts.length === 0) {
+          toast.success('Spec is up to date')
+        } else {
+          toast.success(`Synced: ${parts.join(', ')}`)
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : String(err))
+      } finally {
+        setSyncingCollectionId(null)
+      }
+    },
+    [collections]
+  )
+
+  const handleUnlinkOpenApi = useCallback((collectionId: string) => {
+    setCollections((prev) =>
+      prev.map((c) => {
+        if (c.id !== collectionId) return c
+        // Drop the spec link from the collection and from each request. The
+        // requests themselves stay — users keep all their work.
+        return {
+          ...c,
+          openapi: undefined,
+          requests: c.requests.map((r) => ({ ...r, spec: undefined }))
+        }
+      })
+    )
+    toast.success('Unlinked from spec')
+  }, [])
+
   const handleSend = useCallback(async () => {
     if (!activeRequest || !activeCollectionId) return
     setSending(true)
@@ -179,7 +255,7 @@ function App(): React.JSX.Element {
     <TooltipProvider delayDuration={250}>
       <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
         <ResizablePanelGroup orientation="horizontal" className="h-full">
-          <ResizablePanel defaultSize={22} minSize={16} maxSize={40}>
+          <ResizablePanel defaultSize="22%" minSize="16%" maxSize="40%">
             <Sidebar
               collections={collections}
               activeRequestId={activeRequestId}
@@ -190,10 +266,14 @@ function App(): React.JSX.Element {
               onRenameRequest={handleRenameRequest}
               onDeleteCollection={handleDeleteCollection}
               onDeleteRequest={handleDeleteRequest}
+              onImportOpenApi={handleImportOpenApi}
+              onSyncOpenApi={handleSyncOpenApi}
+              onUnlinkOpenApi={handleUnlinkOpenApi}
+              syncingCollectionId={syncingCollectionId}
             />
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={80} minSize={50}>
+          <ResizablePanel defaultSize="78%" minSize="50%">
             <div className="flex h-full flex-col">
               <div
                 className="h-[52px] shrink-0 border-b border-border"
@@ -201,7 +281,7 @@ function App(): React.JSX.Element {
               />
               {activeRequest && activeCollectionId ? (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
-                  <ResizablePanel defaultSize={45} minSize={20}>
+                  <ResizablePanel defaultSize="45%" minSize="20%">
                     <div className="h-full overflow-auto">
                       <RequestEditor
                         request={activeRequest}
@@ -214,38 +294,61 @@ function App(): React.JSX.Element {
                     </div>
                   </ResizablePanel>
                   <ResizableHandle />
-                  <ResizablePanel defaultSize={55} minSize={20}>
+                  <ResizablePanel defaultSize="55%" minSize="20%">
                     <div className="flex h-full flex-col">
                       <ResponseViewer result={response} sending={sending} />
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
               ) : (
-                <Welcome onNewCollection={handleNewCollection} />
+                <Welcome
+                  onNewCollection={handleNewCollection}
+                  onImportOpenApi={handleImportOpenApi}
+                />
               )}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
+        <OpenApiImportDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onImported={handleOpenApiImported}
+        />
         <Toaster theme="dark" />
       </div>
     </TooltipProvider>
   )
 }
 
-function Welcome({ onNewCollection }: { onNewCollection: () => void }): React.JSX.Element {
+function Welcome({
+  onNewCollection,
+  onImportOpenApi
+}: {
+  onNewCollection: () => void
+  onImportOpenApi: () => void
+}): React.JSX.Element {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
       <h1 className="bg-gradient-to-br from-foreground to-primary bg-clip-text text-4xl font-bold tracking-tight text-transparent">
         pls
       </h1>
       <p className="text-sm">A tiny, beautiful API client</p>
-      <button
-        type="button"
-        onClick={onNewCollection}
-        className="mt-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:border-primary hover:text-foreground"
-      >
-        Create your first collection
-      </button>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={onNewCollection}
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:border-primary hover:text-foreground"
+        >
+          Create a collection
+        </button>
+        <button
+          type="button"
+          onClick={onImportOpenApi}
+          className="rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:border-primary hover:text-foreground"
+        >
+          Import OpenAPI spec
+        </button>
+      </div>
     </div>
   )
 }

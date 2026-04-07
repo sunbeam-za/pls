@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -23,10 +23,14 @@ interface RequestItem {
   body: string
 }
 
+// Collection shape is structurally compatible with the renderer's richer type
+// (`openapi` + `spec` fields). The main process never needs to inspect those,
+// so we keep it loose here and let renderer own the full types.
 interface Collection {
   id: string
   name: string
   requests: RequestItem[]
+  [key: string]: unknown
 }
 
 interface Store {
@@ -109,6 +113,53 @@ async function sendRequest(payload: SendRequestPayload): Promise<SendRequestResu
   }
 }
 
+// ---------- OpenAPI spec loading ----------
+// Parsing + diffing lives in the renderer (`src/renderer/src/lib/openapi.ts`).
+// The main process only handles I/O the renderer can't do itself: fetching
+// from arbitrary URLs (bypassing CORS) and reading local files via a dialog.
+
+interface LoadSpecResult {
+  ok: boolean
+  text?: string
+  sourceType?: 'url' | 'file'
+  sourceLocation?: string
+  error?: string
+}
+
+async function loadSpecFromUrl(url: string): Promise<LoadSpecResult> {
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json, application/yaml, */*' } })
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status} ${res.statusText}` }
+    }
+    const text = await res.text()
+    return { ok: true, text, sourceType: 'url', sourceLocation: url }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function loadSpecFromFile(): Promise<LoadSpecResult> {
+  const result = await dialog.showOpenDialog({
+    title: 'Import OpenAPI spec',
+    properties: ['openFile'],
+    filters: [
+      { name: 'OpenAPI', extensions: ['json', 'yaml', 'yml'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, error: 'cancelled' }
+  }
+  const path = result.filePaths[0]
+  try {
+    const text = await fs.readFile(path, 'utf-8')
+    return { ok: true, text, sourceType: 'file', sourceLocation: path }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 // ---------- Window ----------
 
 function createWindow(): void {
@@ -148,6 +199,15 @@ function createWindow(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.pls.app')
 
+  // In dev, the dock icon is Electron's default. Override it on macOS.
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      app.dock.setIcon(icon)
+    } catch (err) {
+      console.error('Failed to set dock icon', err)
+    }
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -158,6 +218,8 @@ app.whenReady().then(() => {
     return true
   })
   ipcMain.handle('http:send', async (_e, payload: SendRequestPayload) => sendRequest(payload))
+  ipcMain.handle('openapi:loadFromUrl', async (_e, url: string) => loadSpecFromUrl(url))
+  ipcMain.handle('openapi:loadFromFile', async () => loadSpecFromFile())
 
   createWindow()
 
