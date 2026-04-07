@@ -62,41 +62,11 @@ export default function Page() {
       </section>
 
       <section className="section">
-        <h2>— the shift</h2>
+        <h2>— how it works</h2>
         <p className="prose">
-          api clients were built for a human at a keyboard, clicking <i>send</i>, eyeballing a
-          response, and maybe — if they remembered — saving it into a folder.
-        </p>
-        <p className="prose">
-          that's not the shape of the work anymore. the entity making the requests is an agent. it
-          doesn't get tired, doesn't forget, and doesn't naturally save anything. the bottleneck
-          isn't <i>typing the request</i>; it's <i>seeing what the agent just did</i> and{' '}
-          <i>keeping the parts worth keeping</i>.
-        </p>
-        <p className="prose">
-          pls is built around that shift. the agent fires the request through an mcp tool. pls
-          renders it live in a window you can actually look at. anything interesting gets filed,
-          tagged, and turned into a fixture you (or the next agent) can call again.
-        </p>
-      </section>
-
-      <section className="section">
-        <h2>— collecting intelligence in drips</h2>
-        <p className="prose">
-          one debugging session, you ask the agent to hit{' '}
-          <code>POST /v1/checkouts</code> with three weird payloads. those three calls show up in
-          pls. you star the one that reproduced the bug. it gets a name. it joins{' '}
-          <i>checkouts / regressions</i>.
-        </p>
-        <p className="prose">
-          a week later you're chasing a different bug. the agent reaches for the same endpoint —
-          but this time it finds your fixture sitting there, with the exact headers and the exact
-          body that broke things last time. it replays it. you skip an hour of guessing.
-        </p>
-        <p className="prose">
-          that's the whole loop. <em>drip</em>, <em>file</em>, <em>recall</em>. the collection
-          isn't something you sit down to author. it accrues, the way a good notes folder accrues
-          — by being the path of least resistance.
+          agent fires a request through pls. pls renders it live, files it under the right host,
+          and lets you promote the good ones into named fixtures. next time the agent reaches for
+          that endpoint, the fixture is already sitting there. <em>drip, file, recall.</em>
         </p>
       </section>
 
@@ -105,59 +75,27 @@ export default function Page() {
         <ul className="bullets">
           <li>
             <b>mcp server.</b>
-            <span>
-              ships with pls. claude code, cursor, windsurf, codex — anything that speaks mcp can
-              send through it.
-            </span>
+            <span>claude, cursor, windsurf, codex — all send through pls.</span>
           </li>
           <li>
-            <b>live request feed.</b>
-            <span>
-              every call the agent makes appears in real time. inspect headers, body, timing.
-              replay with one keystroke.
-            </span>
+            <b>live feed.</b>
+            <span>every call streams into one window. replay in a keystroke.</span>
           </li>
           <li>
             <b>auto-collections.</b>
-            <span>
-              ad-hoc requests get filed under the host they hit. promote the good ones into named
-              fixtures.
-            </span>
+            <span>ad-hoc calls get filed by host. promote the keepers.</span>
           </li>
           <li>
-            <b>local-first storage.</b>
-            <span>
-              everything is plain json on disk. version it, grep it, ship it in a pr alongside the
-              code it tests.
-            </span>
+            <b>local-first.</b>
+            <span>plain json on disk. version it, grep it, ship it in a pr.</span>
           </li>
           <li>
             <b>openapi aware.</b>
-            <span>
-              drop in a spec — pls turns it into a browsable collection your agent can call by
-              name.
-            </span>
+            <span>drop in a spec, get a browsable collection.</span>
           </li>
           <li>
             <b>secret refs.</b>
-            <span>
-              auth lives in profiles, resolved at send time. tokens never get baked into a saved
-              request.
-            </span>
-          </li>
-          <li>
-            <b>tiny mac app.</b>
-            <span>
-              one window. keyboard-first. typography that respects your retina. opens in under a
-              second.
-            </span>
-          </li>
-          <li>
-            <b>scriptable.</b>
-            <span>
-              the same store the app reads is exposed over mcp and over the cli. agents and humans
-              share one source of truth.
-            </span>
+            <span>auth resolves at send time. tokens never get baked in.</span>
           </li>
         </ul>
       </section>
@@ -201,29 +139,12 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="section">
-        <h2>— who it's for</h2>
-        <p className="prose">
-          people building with agents who've noticed the same thing: the agent is fine at making
-          the request, and you are fine at reading the response, but the moment in between — where
-          the request <i>is</i> — has no home. pls is the home.
-        </p>
-        <p className="prose">
-          if you've ever asked claude to <code>curl</code> something, copied the result back into
-          chat, and then ten minutes later wished you still had the request: this is for you.
-        </p>
-      </section>
-
       <section className="section cta-bottom">
         <h2>— get it</h2>
-        <p className="prose">
-          mac only for now. linux & windows builds are next. it's free. the source is on github,
-          the issues are open, and the roadmap is whatever you tell us is broken.
-        </p>
+        <p className="prose">mac only for now. free. open source.</p>
         <div className="links">
           <a href="https://github.com/sunbeam/pls/releases">↳ download for mac</a>
           <a href="https://github.com/sunbeam/pls">↳ source on github</a>
-          <a href="https://github.com/sunbeam/pls#mcp-server">↳ mcp setup docs</a>
         </div>
       </section>
 
