@@ -31,6 +31,9 @@ declare global {
         history: HistoryEntry[]
       }) => Promise<ExportCollectionResult>
       importCollection: () => Promise<ImportCollectionResult>
+      appendHistory: (entry: HistoryEntry) => Promise<HistoryEntry[]>
+      readHistory: () => Promise<HistoryEntry[]>
+      onHistoryAppended: (callback: (entries: HistoryEntry[]) => void) => () => void
     }
   }
 }

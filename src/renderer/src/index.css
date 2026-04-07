@@ -13,6 +13,28 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Live feed: when a brand-new row appears, fade it in and briefly
+   highlight its background. Used by src/renderer/src/components/LiveFeed.tsx.
+   Referenced via tailwind's arbitrary animation utility, so the keyframe
+   has to live in plain CSS. */
+@keyframes liveFeedEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+    background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0);
+    background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    background-color: transparent;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

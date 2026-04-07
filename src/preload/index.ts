@@ -230,7 +230,20 @@ const api = {
     history: HistoryEntry[]
   }): Promise<ExportCollectionResult> => ipcRenderer.invoke('collection:export', args),
   importCollection: (): Promise<ImportCollectionResult> =>
-    ipcRenderer.invoke('collection:import')
+    ipcRenderer.invoke('collection:import'),
+  // Live feed: append our own entry and subscribe to entries written by
+  // any process (us, the MCP server, a future sidecar). The subscription
+  // returns an unsubscribe fn so callers can clean up on unmount.
+  appendHistory: (entry: HistoryEntry): Promise<HistoryEntry[]> =>
+    ipcRenderer.invoke('history:append', entry),
+  readHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:read'),
+  onHistoryAppended: (callback: (entries: HistoryEntry[]) => void): (() => void) => {
+    const handler = (_event: unknown, entries: HistoryEntry[]): void => callback(entries)
+    ipcRenderer.on('history:appended', handler)
+    return (): void => {
+      ipcRenderer.off('history:appended', handler)
+    }
+  }
 }
 
 if (process.contextIsolated) {

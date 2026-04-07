@@ -12,7 +12,11 @@ import { RequestEditor, type RequestEditorHandle } from '@/components/RequestEdi
 import { ResponseViewer } from '@/components/ResponseViewer'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import { HistoryDialog } from '@/components/HistoryDialog'
+import { LiveFeed } from '@/components/LiveFeed'
+import { Button } from '@/components/ui/button'
+import { Radio } from 'lucide-react'
 import { useShortcuts } from '@/hooks/useShortcuts'
+import { cn } from '@/lib/utils'
 import {
   newCollection,
   newRequest,
@@ -165,6 +169,8 @@ function App(): React.JSX.Element {
   const [importOpen, setImportOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [syncingCollectionId, setSyncingCollectionId] = useState<string | null>(null)
+  const [liveMode, setLiveMode] = useState(false)
+  const [newestHistoryId, setNewestHistoryId] = useState<string | null>(null)
   const persistTimer = useRef<number | null>(null)
   const requestEditorRef = useRef<RequestEditorHandle>(null)
 
@@ -194,27 +200,54 @@ function App(): React.JSX.Element {
     }
   }, [])
 
-  // Debounced persist on change. Rebuilds the full three-slice store on
-  // each write so we never accidentally drop context/state fields that the
-  // renderer doesn't actively use yet.
+  // Debounced persist on change. We persist config + context only —
+  // history is owned by main and flows through the history:append IPC,
+  // so excluding it here prevents our writes from clobbering an append
+  // that arrived between reads. The `state` slice is still included so
+  // the store file stays shape-correct; the history field on disk is
+  // updated by main's appendHistoryEntry path.
   useEffect(() => {
     if (!loaded) return
     if (persistTimer.current) window.clearTimeout(persistTimer.current)
-    persistTimer.current = window.setTimeout(() => {
-      const store: Store = {
-        config: { collections, authProfiles },
-        context: { environments, activeEnvironmentId },
-        state: { history }
-      }
-      window.api.writeStore(store).catch((err) => {
+    persistTimer.current = window.setTimeout(async () => {
+      try {
+        // Read the current on-disk history so we don't stomp entries MCP
+        // wrote between our last render and this persist.
+        const freshHistory = await window.api.readHistory()
+        const store: Store = {
+          config: { collections, authProfiles },
+          context: { environments, activeEnvironmentId },
+          state: { history: freshHistory }
+        }
+        await window.api.writeStore(store)
+      } catch (err) {
         console.error('Failed to save', err)
         toast.error('Failed to save changes')
-      })
+      }
     }, 250)
     return (): void => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current)
     }
-  }, [collections, authProfiles, environments, activeEnvironmentId, history, loaded])
+  }, [collections, authProfiles, environments, activeEnvironmentId, loaded])
+
+  // Subscribe to the live history broadcast. Any entry written by main
+  // (ours via appendHistory, MCP's via the fs watcher) gets pushed here
+  // and merged into the local feed. De-duplicated by id so repeated
+  // broadcasts are harmless.
+  useEffect(() => {
+    const unsubscribe = window.api.onHistoryAppended((entries) => {
+      setHistory((prev) => {
+        const seen = new Set(prev.map((h) => h.id))
+        const fresh = entries.filter((e) => !seen.has(e.id))
+        if (fresh.length === 0) return prev
+        // The most recent broadcast wins the "newest" marker for the
+        // LiveFeed animation.
+        setNewestHistoryId(fresh[0].id)
+        return [...fresh, ...prev].slice(0, HISTORY_MAX)
+      })
+    })
+    return unsubscribe
+  }, [])
 
   const activeRequest = useMemo<RequestItem | null>(() => {
     if (!activeRequestId) return null
@@ -508,9 +541,12 @@ function App(): React.JSX.Element {
         body: activeRequest.body
       })
       setResponse(res)
-      // Snapshot it into history — keep the newest HISTORY_MAX entries only.
+      // Append via main. Main broadcasts to every window (including us)
+      // and the onHistoryAppended subscription folds it into local state.
       const entry = recordHistoryEntry(activeRequest, res)
-      setHistory((prev) => [entry, ...prev].slice(0, HISTORY_MAX))
+      window.api.appendHistory(entry).catch((err) => {
+        console.error('failed to append history', err)
+      })
       if (res.error) {
         toast.error(res.error)
       }
@@ -537,6 +573,9 @@ function App(): React.JSX.Element {
     }
     setResponse(result)
     setHistoryOpen(false)
+    // Selecting from the feed drops us back into the editor view — the
+    // response we just hydrated is what we want to show.
+    setLiveMode(false)
     // If the original request is still around, select it so the editor
     // matches the response the user is looking at.
     if (entry.requestId) {
@@ -622,10 +661,40 @@ function App(): React.JSX.Element {
           <ResizablePanel defaultSize="78%" minSize="50%">
             <div className="flex h-full flex-col">
               <div
-                className="h-[52px] shrink-0 border-b border-border"
+                className="relative h-[52px] shrink-0 border-b border-border"
                 style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-              />
-              {activeRequest && activeCollectionId ? (
+              >
+                <div
+                  className="absolute top-1/2 right-4 flex -translate-y-1/2 items-center gap-1"
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                >
+                  <Button
+                    variant={liveMode ? 'default' : 'ghost'}
+                    size="sm"
+                    className={cn(
+                      'h-7 gap-1.5 px-2.5 text-[11px] font-medium',
+                      liveMode && 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/20'
+                    )}
+                    onClick={() => setLiveMode((v) => !v)}
+                  >
+                    {liveMode && (
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      </span>
+                    )}
+                    {!liveMode && <Radio className="h-3 w-3" />}
+                    Live
+                  </Button>
+                </div>
+              </div>
+              {liveMode ? (
+                <LiveFeed
+                  entries={history}
+                  newestId={newestHistoryId}
+                  onSelect={handleReplayHistory}
+                />
+              ) : activeRequest && activeCollectionId ? (
                 <ResizablePanelGroup orientation="vertical" className="flex-1">
                   <ResizablePanel defaultSize="45%" minSize="20%">
                     <div className="h-full overflow-auto">

@@ -6,6 +6,7 @@ import icon from '../../resources/icon.png?asset'
 import {
   createStorageAdapter,
   parseStorageSpecFromEnv,
+  type HistoryEntry,
   type StorageAdapter,
   type Store
 } from '../shared/store'
@@ -47,6 +48,91 @@ const http = (): HttpAdapter => {
 
 const readStore = (): Promise<Store> => storage().read()
 const writeStore = (store: Store): Promise<void> => storage().write(store)
+
+// ---------- History live feed ----------
+// The renderer and the MCP server both append to state.history, but only
+// the renderer has UI. When MCP writes land on disk, the main process
+// spots them via fs.watch and broadcasts the new entries to every open
+// window so the live feed can render them in real time.
+//
+// We broadcast *only new entries* rather than the whole store to keep the
+// IPC payload small and to avoid clobbering any in-flight renderer edits
+// to config/context slices.
+
+let _lastHistoryIds = new Set<string>()
+
+function broadcastHistoryAppended(entries: HistoryEntry[]): void {
+  if (entries.length === 0) return
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('history:appended', entries)
+  }
+}
+
+async function appendHistoryEntry(entry: HistoryEntry): Promise<HistoryEntry[]> {
+  const fresh = await storage().mutate((store) => {
+    store.state.history = [entry, ...store.state.history].slice(0, 200)
+    _lastHistoryIds = new Set(store.state.history.map((h) => h.id))
+    return [entry]
+  })
+  broadcastHistoryAppended(fresh)
+  return fresh
+}
+
+/**
+ * Diff the current on-disk history against the last snapshot we saw and
+ * return any entries that weren't there before. Called after fs.watch
+ * fires — if something external (MCP server in another process) appended,
+ * we pick it up here and forward to the renderer.
+ */
+async function detectNewHistoryEntries(): Promise<HistoryEntry[]> {
+  const store = await readStore()
+  const fresh: HistoryEntry[] = []
+  for (const entry of store.state.history) {
+    if (!_lastHistoryIds.has(entry.id)) fresh.push(entry)
+  }
+  _lastHistoryIds = new Set(store.state.history.map((h) => h.id))
+  return fresh
+}
+
+let _watchDebounce: NodeJS.Timeout | null = null
+let _watcher: import('fs').FSWatcher | null = null
+
+function startStoreWatcher(): void {
+  const path = defaultStorePath()
+  // fs.watch on a file on macOS uses kqueue which breaks when we rename
+  // the tmp file over the original (that's how we write atomically). So
+  // we watch the containing directory and filter by basename instead.
+  const dir = require('path').dirname(path)
+  const basename = require('path').basename(path)
+  try {
+    _watcher = require('fs').watch(dir, { persistent: false }, (_event: string, filename: string | null) => {
+      if (filename !== basename) return
+      // Debounce: a single atomic write can fire multiple events because
+      // we use tmp → rename. Collapse them before re-reading.
+      if (_watchDebounce) clearTimeout(_watchDebounce)
+      _watchDebounce = setTimeout(() => {
+        detectNewHistoryEntries()
+          .then((newEntries) => {
+            if (newEntries.length > 0) broadcastHistoryAppended(newEntries)
+          })
+          .catch((err) => console.error('store watcher diff failed', err))
+      }, 100)
+    })
+  } catch (err) {
+    console.error('failed to start store watcher', err)
+  }
+}
+
+// Prime the last-seen id set so the first fs.watch event after launch
+// doesn't broadcast everything already in the file as "new".
+async function primeHistorySnapshot(): Promise<void> {
+  try {
+    const store = await readStore()
+    _lastHistoryIds = new Set(store.state.history.map((h) => h.id))
+  } catch {
+    // Ignore — next mutate will recover.
+  }
+}
 
 // ---------- MCP handoff ----------
 // The handoff widget in the renderer needs to tell the user how to wire
@@ -372,6 +458,19 @@ app.whenReady().then(() => {
   ipcMain.handle('favicon:get', async (_e, domain: string): Promise<string | null> =>
     fetchFavicon(domain)
   )
+  // Live feed plumbing. The renderer appends through this IPC instead of
+  // persisting history via writeStore, so MCP writes (arriving via
+  // fs.watch) and renderer writes never race on the same slice.
+  ipcMain.handle('history:append', async (_e, entry: HistoryEntry): Promise<HistoryEntry[]> =>
+    appendHistoryEntry(entry)
+  )
+  ipcMain.handle('history:read', async (): Promise<HistoryEntry[]> => {
+    const store = await readStore()
+    return store.state.history
+  })
+
+  // Start watching the store file for external appends (MCP server).
+  primeHistorySnapshot().then(startStoreWatcher)
 
   createWindow()
 
@@ -383,5 +482,16 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('before-quit', () => {
+  if (_watcher) {
+    try {
+      _watcher.close()
+    } catch {
+      // Watcher close errors are fatal for nobody — swallow.
+    }
+    _watcher = null
   }
 })
