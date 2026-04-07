@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 

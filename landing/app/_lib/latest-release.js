@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 // Shared fetcher for the "latest release" data used by the home CTA.
 // Revalidates hourly so an unauthenticated GitHub API call per hour is enough.
 
