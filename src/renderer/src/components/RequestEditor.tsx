@@ -1,6 +1,7 @@
-import { Send } from 'lucide-react'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Kbd } from '@/components/ui/kbd'
 import {
   Select,
   SelectContent,
@@ -9,10 +10,17 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SHORTCUTS } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import type { HttpMethod, RequestItem } from '../../../preload/index'
 import { HeadersEditor } from './HeadersEditor'
 import { CodeEditor } from './CodeEditor'
+
+/** Imperative handle exposed so the global `focus-url` shortcut can jump
+ * straight into the URL bar without threading refs through half the app. */
+export interface RequestEditorHandle {
+  focusUrl: () => void
+}
 
 const methods: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
@@ -33,14 +41,22 @@ interface RequestEditorProps {
   onSend: () => void
 }
 
-export function RequestEditor({
-  request,
-  sending,
-  onChange,
-  onSend
-}: RequestEditorProps): React.JSX.Element {
+export const RequestEditor = forwardRef<RequestEditorHandle, RequestEditorProps>(
+  function RequestEditor({ request, sending, onChange, onSend }, ref): React.JSX.Element {
   const enabledHeaderCount = request.headers.filter((h) => h.enabled && h.key.trim()).length
   const bodyShown = !['GET', 'HEAD'].includes(request.method)
+  const urlRef = useRef<HTMLInputElement>(null)
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusUrl: (): void => {
+        urlRef.current?.focus()
+        urlRef.current?.select()
+      }
+    }),
+    []
+  )
 
   return (
     <div className="flex flex-col">
@@ -66,24 +82,26 @@ export function RequestEditor({
           </SelectContent>
         </Select>
         <Input
+          ref={urlRef}
           value={request.url}
           onChange={(e) => onChange({ ...request, url: e.target.value })}
           placeholder="https://api.example.com/endpoint"
           className="h-9 flex-1 font-mono text-xs"
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') onSend()
-          }}
         />
-        <Button onClick={onSend} disabled={sending || !request.url} className="h-9 px-5">
+        <Button
+          onClick={onSend}
+          disabled={sending || !request.url}
+          className="h-9 gap-2 px-4"
+        >
           {sending ? (
             <>
-              <span className="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
               Sending
             </>
           ) : (
             <>
-              <Send className="mr-1.5 h-3.5 w-3.5" />
               Send
+              <Kbd keys={SHORTCUTS['send-request'].keys} className="text-primary-foreground/80" />
             </>
           )}
         </Button>
@@ -131,4 +149,5 @@ export function RequestEditor({
       </Tabs>
     </div>
   )
-}
+  }
+)
