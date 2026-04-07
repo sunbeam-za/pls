@@ -48,7 +48,7 @@ export default function ClaudeMdBlock({ content }) {
           </span>
         </button>
         <button type="button" className="btn-ghost" onClick={download}>
-          download CLAUDE.md →
+          download CLAUDE.md ↓
         </button>
       </div>
     </div>

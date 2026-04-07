@@ -26,7 +26,7 @@ export default async function Page() {
       </header>
 
       <h1 className="tagline">
-        an <em>agent-native</em> request library. collecting intelligence, in drips.
+        an <em>agent-native</em> request library. drip by drip.
       </h1>
 
       <p className="lede">

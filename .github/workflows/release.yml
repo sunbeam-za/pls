@@ -1,9 +1,8 @@
 name: release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -46,6 +45,14 @@ jobs:
       - name: install deps
         run: npm ci
 
+      - name: sync package.json version to release tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          echo "release tag: $TAG → version: $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
       - name: build
         run: npm run ${{ matrix.script }}
         env:
@@ -56,6 +63,6 @@ jobs:
       - name: upload to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: ${{ matrix.artifacts }}
-          generate_release_notes: true
           fail_on_unmatched_files: false
