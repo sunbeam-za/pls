@@ -1,6 +1,11 @@
 import Image from 'next/image'
+import DownloadCTA from './download-cta'
+import { getLatestRelease } from './_lib/latest-release'
 
-export default function Page() {
+export default async function Page() {
+  const latest = await getLatestRelease()
+  const downloadHref = latest?.downloadUrl || '/releases'
+  const version = latest?.version || 'v0.1'
   return (
     <main className="page">
       <header className="topbar">
@@ -13,7 +18,7 @@ export default function Page() {
             className="brand-mark"
             priority
           />
-          “pls” / v0.1
+          “pls” / {version}
         </span>
         <span className="meta">an agent-native request library</span>
       </header>
@@ -53,8 +58,10 @@ export default function Page() {
           <span className="c"># that's it. open the app and watch it fill up.</span>
         </pre>
         <div className="cta-actions">
-          <a href="/releases">download for mac →</a>
-          <a href="https://github.com/sunbeam-za/pls">view on github →</a>
+          <DownloadCTA href={downloadHref} version={version} />
+          <a className="btn-ghost" href="https://github.com/sunbeam-za/pls">
+            view on github →
+          </a>
         </div>
       </section>
 
@@ -139,9 +146,11 @@ export default function Page() {
       <section className="section cta-bottom">
         <h2>— get it</h2>
         <p className="prose">mac only for now. free. open source.</p>
-        <div className="links">
-          <a href="/releases">↳ download for mac</a>
-          <a href="https://github.com/sunbeam-za/pls">↳ source on github</a>
+        <div className="cta-actions">
+          <DownloadCTA href={downloadHref} version={version} />
+          <a className="btn-ghost" href="/releases">
+            all releases →
+          </a>
         </div>
       </section>
 
@@ -156,6 +165,11 @@ export default function Page() {
             className="brand-mark sm"
           />
           sunbeam
+        </span>
+        <span className="foot-meta">
+          <a href="https://github.com/sunbeam-za/pls">github</a>
+          {' · '}
+          made with love &amp; way too much water, in berlin, april 2026
         </span>
       </footer>
     </main>
