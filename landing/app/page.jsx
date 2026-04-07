@@ -26,10 +26,8 @@ export default function Page() {
       </p>
 
       <p className="lede">
-        your agent makes hundreds of http calls a day. most of them are good — and most of them
-        vanish into a tool log nobody reads. pls puts a tiny mac window between your agent and the
-        internet, catches every request as it happens, and turns the ambient traffic into a living
-        collection you can see, replay, and learn from.
+        agents make hundreds of http calls a day. pls catches each one, files it, and turns the
+        ambient traffic into a collection you can replay.
       </p>
 
       <section className="cta" aria-label="install">
