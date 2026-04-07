@@ -53,7 +53,7 @@ export default function Page() {
           <span className="c"># that's it. open the app and watch it fill up.</span>
         </pre>
         <div className="cta-actions">
-          <a href="https://github.com/sunbeam-za/pls/releases">download for mac →</a>
+          <a href="/releases">download for mac →</a>
           <a href="https://github.com/sunbeam-za/pls">view on github →</a>
         </div>
       </section>
@@ -140,7 +140,7 @@ export default function Page() {
         <h2>— get it</h2>
         <p className="prose">mac only for now. free. open source.</p>
         <div className="links">
-          <a href="https://github.com/sunbeam-za/pls/releases">↳ download for mac</a>
+          <a href="/releases">↳ download for mac</a>
           <a href="https://github.com/sunbeam-za/pls">↳ source on github</a>
         </div>
       </section>
