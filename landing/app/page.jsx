@@ -1,6 +1,6 @@
 import Image from 'next/image'
 import DownloadCTA from './download-cta'
-import ClaudeMdBlock from './claude-md-block'
+import AgentRulesBlock from './agent-rules-block'
 import { getLatestRelease } from './_lib/latest-release'
 import { getClaudeMd } from './_lib/claude-md'
 
@@ -79,11 +79,10 @@ export default async function Page() {
       <section className="section">
         <h2>— tell your agent</h2>
         <p className="prose">
-          drop this into your project's <code>CLAUDE.md</code> (or the equivalent rules file for
-          cursor, windsurf, codex). it tells the agent to route every http call through “pls” so
-          you can actually see what it's doing.
+          pick your agent. drop the file in your project root. it tells the agent to route every
+          http call through “pls” so you can actually see what it's doing.
         </p>
-        {claudeMd ? <ClaudeMdBlock content={claudeMd} /> : null}
+        {claudeMd ? <AgentRulesBlock content={claudeMd} /> : null}
       </section>
 
       <section className="section">
