@@ -89,17 +89,9 @@ export function ResponseViewer({ result, sending }: ResponseViewerProps): React.
 
       <Tabs defaultValue="body" className="flex flex-1 flex-col overflow-hidden">
         <div className="border-b border-border px-5">
-          <TabsList className="h-9 bg-transparent p-0">
-            <TabsTrigger
-              value="body"
-              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            >
-              Body
-            </TabsTrigger>
-            <TabsTrigger
-              value="headers"
-              className="h-9 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            >
+          <TabsList variant="line" className="h-9">
+            <TabsTrigger value="body">Body</TabsTrigger>
+            <TabsTrigger value="headers">
               Headers
               <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 {headerEntries.length}

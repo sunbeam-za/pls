@@ -91,11 +91,8 @@ export function RequestEditor({
 
       <Tabs defaultValue={bodyShown ? 'body' : 'headers'}>
         <div className="border-b border-border px-5">
-          <TabsList className="h-10 bg-transparent p-0">
-            <TabsTrigger
-              value="headers"
-              className="h-10 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-            >
+          <TabsList variant="line" className="h-10">
+            <TabsTrigger value="headers">
               Headers
               {enabledHeaderCount > 0 && (
                 <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -104,10 +101,7 @@ export function RequestEditor({
               )}
             </TabsTrigger>
             {bodyShown && (
-              <TabsTrigger
-                value="body"
-                className="h-10 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none"
-              >
+              <TabsTrigger value="body">
                 Body
                 {request.body && (
                   <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" />

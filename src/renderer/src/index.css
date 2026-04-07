@@ -3,6 +3,16 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* macOS subpixel rendering makes Geist look chunky on dark backgrounds.
+   Force greyscale antialiasing so strokes stay thin and crisp — this is
+   the same fix Linear, Vercel, Figma, etc. all ship. */
+html,
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
