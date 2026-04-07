@@ -56,9 +56,13 @@ jobs:
       - name: build
         run: npm run ${{ matrix.script }}
         env:
-          # ad-hoc unsigned build. add APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD /
-          # APPLE_TEAM_ID secrets later to enable notarization on macos.
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # No Developer ID cert in CI — electron-builder falls through to
+          # ad-hoc signing on macOS arm64, which is required for the bundle
+          # to load (otherwise the prebuilt Electron Framework's Team ID
+          # mismatches the unsigned main binary and dyld refuses to load it).
+          # Add APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+          # secrets later to enable real signing + notarization on macOS.
+          CSC_IDENTITY_AUTO_DISCOVERY: true
 
       - name: upload to release
         uses: softprops/action-gh-release@v2
