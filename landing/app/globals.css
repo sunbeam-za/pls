@@ -251,6 +251,19 @@ kbd {
   color: var(--ink);
 }
 
+button.btn-primary,
+button.btn-ghost {
+  font: inherit;
+  cursor: pointer;
+}
+
+.claude-md-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
 .section {
   margin-top: 56px;
 }

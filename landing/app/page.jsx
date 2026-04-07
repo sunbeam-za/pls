@@ -1,9 +1,11 @@
 import Image from 'next/image'
 import DownloadCTA from './download-cta'
+import ClaudeMdBlock from './claude-md-block'
 import { getLatestRelease } from './_lib/latest-release'
+import { getClaudeMd } from './_lib/claude-md'
 
 export default async function Page() {
-  const latest = await getLatestRelease()
+  const [latest, claudeMd] = await Promise.all([getLatestRelease(), getClaudeMd()])
   const downloadHref = latest?.downloadUrl || '/releases'
   const version = latest?.version || 'v0.1'
   return (
@@ -72,6 +74,16 @@ export default async function Page() {
           and lets you promote the good ones into named fixtures. next time the agent reaches for
           that endpoint, the fixture is already sitting there. <em>drip, file, recall.</em>
         </p>
+      </section>
+
+      <section className="section">
+        <h2>— tell your agent</h2>
+        <p className="prose">
+          drop this into your project's <code>CLAUDE.md</code> (or the equivalent rules file for
+          cursor, windsurf, codex). it tells the agent to route every http call through “pls” so
+          you can actually see what it's doing.
+        </p>
+        {claudeMd ? <ClaudeMdBlock content={claudeMd} /> : null}
       </section>
 
       <section className="section">
