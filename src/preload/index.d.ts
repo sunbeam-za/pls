@@ -1,5 +1,16 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { Store, SendRequestPayload, SendRequestResult, LoadSpecResult, McpInfo } from './index'
+import type {
+  Store,
+  Collection,
+  AuthProfile,
+  HistoryEntry,
+  SendRequestPayload,
+  SendRequestResult,
+  LoadSpecResult,
+  McpInfo,
+  ExportCollectionResult,
+  ImportCollectionResult
+} from './index'
 
 declare global {
   interface Window {
@@ -12,6 +23,14 @@ declare global {
       loadSpecFromFile: () => Promise<LoadSpecResult>
       mcpInfo: () => Promise<McpInfo>
       getFavicon: (domain: string) => Promise<string | null>
+      exportCollection: (args: {
+        collectionId: string
+        defaultName: string
+        collection: Collection
+        authProfiles: AuthProfile[]
+        history: HistoryEntry[]
+      }) => Promise<ExportCollectionResult>
+      importCollection: () => Promise<ImportCollectionResult>
     }
   }
 }

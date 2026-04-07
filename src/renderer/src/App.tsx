@@ -8,10 +8,11 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { Sidebar } from '@/components/Sidebar'
-import { RequestEditor } from '@/components/RequestEditor'
+import { RequestEditor, type RequestEditorHandle } from '@/components/RequestEditor'
 import { ResponseViewer } from '@/components/ResponseViewer'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import { HistoryDialog } from '@/components/HistoryDialog'
+import { useShortcuts } from '@/hooks/useShortcuts'
 import {
   newCollection,
   newRequest,
@@ -20,7 +21,100 @@ import {
   type Store
 } from '@/lib/storage'
 import { resyncCollection } from '@/lib/openapi'
-import type { HistoryEntry, SendRequestResult } from '../../preload/index'
+import type {
+  AuthProfile,
+  Environment,
+  FolderNode,
+  HistoryEntry,
+  RequestNode,
+  SendRequestResult,
+  TreeNode
+} from '../../preload/index'
+
+// ---------- Tree helpers (renderer-local copies) ----------
+// Mirrors the helpers in src/shared/store/types.ts. Kept here so the
+// renderer bundle doesn't have to reach into shared code it doesn't
+// otherwise need. Small enough that duplication is cheaper than wiring.
+
+function* walkRequestsTree(nodes: TreeNode[]): Generator<RequestItem> {
+  for (const node of nodes) {
+    if (node.kind === 'request') yield node.request
+    else yield* walkRequestsTree(node.children)
+  }
+}
+
+function mapRequestsTree(
+  nodes: TreeNode[],
+  fn: (r: RequestItem) => RequestItem
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind === 'request') return { kind: 'request', request: fn(node.request) }
+    return { ...node, children: mapRequestsTree(node.children, fn) }
+  })
+}
+
+function filterRequestsTree(
+  nodes: TreeNode[],
+  keep: (r: RequestItem) => boolean
+): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const node of nodes) {
+    if (node.kind === 'request') {
+      if (keep(node.request)) out.push(node)
+    } else {
+      out.push({ ...node, children: filterRequestsTree(node.children, keep) })
+    }
+  }
+  return out
+}
+
+function treeContainsRequest(nodes: TreeNode[], requestId: string): boolean {
+  for (const node of nodes) {
+    if (node.kind === 'request') {
+      if (node.request.id === requestId) return true
+    } else if (treeContainsRequest(node.children, requestId)) {
+      return true
+    }
+  }
+  return false
+}
+
+function appendToFolder(
+  nodes: TreeNode[],
+  folderId: string,
+  child: TreeNode
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind !== 'folder') return node
+    if (node.id === folderId) return { ...node, children: [...node.children, child] }
+    return { ...node, children: appendToFolder(node.children, folderId, child) }
+  })
+}
+
+function renameFolderInTree(
+  nodes: TreeNode[],
+  folderId: string,
+  name: string
+): TreeNode[] {
+  return nodes.map((node) => {
+    if (node.kind !== 'folder') return node
+    if (node.id === folderId) return { ...node, name }
+    return { ...node, children: renameFolderInTree(node.children, folderId, name) }
+  })
+}
+
+function removeFolderFromTree(nodes: TreeNode[], folderId: string): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const node of nodes) {
+    if (node.kind !== 'folder') {
+      out.push(node)
+      continue
+    }
+    if (node.id === folderId) continue
+    out.push({ ...node, children: removeFolderFromTree(node.children, folderId) })
+  }
+  return out
+}
 
 const HISTORY_MAX = 200
 const HISTORY_BODY_MAX = 64 * 1024
@@ -54,7 +148,14 @@ const recordHistoryEntry = (
 }
 
 function App(): React.JSX.Element {
+  // Three separate slices mirror the persisted Store shape. Keeping them
+  // as independent useState calls means the rest of the component tree
+  // doesn't have to learn about the slice boundary — it just consumes
+  // `collections`, `history`, etc. as before.
   const [collections, setCollections] = useState<Collection[]>([])
+  const [authProfiles, setAuthProfiles] = useState<AuthProfile[]>([])
+  const [environments, setEnvironments] = useState<Environment[]>([])
+  const [activeEnvironmentId, setActiveEnvironmentId] = useState<string | undefined>(undefined)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null)
@@ -65,6 +166,7 @@ function App(): React.JSX.Element {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [syncingCollectionId, setSyncingCollectionId] = useState<string | null>(null)
   const persistTimer = useRef<number | null>(null)
+  const requestEditorRef = useRef<RequestEditorHandle>(null)
 
   // Load on mount. Guard against StrictMode double-mount: a stale resolve
   // from the first effect could otherwise stomp state set after the user
@@ -75,8 +177,11 @@ function App(): React.JSX.Element {
       .readStore()
       .then((store) => {
         if (cancelled) return
-        setCollections(store.collections ?? [])
-        setHistory(store.history ?? [])
+        setCollections(store.config.collections)
+        setAuthProfiles(store.config.authProfiles)
+        setEnvironments(store.context.environments)
+        setActiveEnvironmentId(store.context.activeEnvironmentId)
+        setHistory(store.state.history)
         setLoaded(true)
       })
       .catch((err) => {
@@ -89,12 +194,18 @@ function App(): React.JSX.Element {
     }
   }, [])
 
-  // Debounced persist on change
+  // Debounced persist on change. Rebuilds the full three-slice store on
+  // each write so we never accidentally drop context/state fields that the
+  // renderer doesn't actively use yet.
   useEffect(() => {
     if (!loaded) return
     if (persistTimer.current) window.clearTimeout(persistTimer.current)
     persistTimer.current = window.setTimeout(() => {
-      const store: Store = { collections, history }
+      const store: Store = {
+        config: { collections, authProfiles },
+        context: { environments, activeEnvironmentId },
+        state: { history }
+      }
       window.api.writeStore(store).catch((err) => {
         console.error('Failed to save', err)
         toast.error('Failed to save changes')
@@ -103,13 +214,14 @@ function App(): React.JSX.Element {
     return (): void => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current)
     }
-  }, [collections, history, loaded])
+  }, [collections, authProfiles, environments, activeEnvironmentId, history, loaded])
 
   const activeRequest = useMemo<RequestItem | null>(() => {
     if (!activeRequestId) return null
     for (const c of collections) {
-      const r = c.requests.find((x) => x.id === activeRequestId)
-      if (r) return r
+      for (const r of walkRequestsTree(c.children)) {
+        if (r.id === activeRequestId) return r
+      }
     }
     return null
   }, [collections, activeRequestId])
@@ -122,7 +234,9 @@ function App(): React.JSX.Element {
             ? c
             : {
                 ...c,
-                requests: c.requests.map((r) => (r.id === requestId ? { ...r, ...patch } : r))
+                children: mapRequestsTree(c.children, (r) =>
+                  r.id === requestId ? { ...r, ...patch } : r
+                )
               }
         )
       )
@@ -135,15 +249,68 @@ function App(): React.JSX.Element {
     setCollections((prev) => [...prev, c])
   }, [])
 
-  const handleNewRequest = useCallback((collectionId: string) => {
-    const r = newRequest()
-    setCollections((prev) =>
-      prev.map((c) => (c.id === collectionId ? { ...c, requests: [...c.requests, r] } : c))
-    )
-    setActiveCollectionId(collectionId)
-    setActiveRequestId(r.id)
-    setResponse(null)
-  }, [])
+  const handleNewRequest = useCallback(
+    (collectionId: string, parentFolderId?: string) => {
+      const r = newRequest()
+      const node: RequestNode = { kind: 'request', request: r }
+      setCollections((prev) =>
+        prev.map((c) => {
+          if (c.id !== collectionId) return c
+          if (!parentFolderId) return { ...c, children: [...c.children, node] }
+          return { ...c, children: appendToFolder(c.children, parentFolderId, node) }
+        })
+      )
+      setActiveCollectionId(collectionId)
+      setActiveRequestId(r.id)
+      setResponse(null)
+    },
+    []
+  )
+
+  const handleNewFolder = useCallback(
+    (collectionId: string, parentFolderId?: string) => {
+      const folder: FolderNode = {
+        kind: 'folder',
+        id: `${Date.now().toString(36)}-fld`,
+        name: 'New folder',
+        children: []
+      }
+      setCollections((prev) =>
+        prev.map((c) => {
+          if (c.id !== collectionId) return c
+          if (!parentFolderId) return { ...c, children: [...c.children, folder] }
+          return { ...c, children: appendToFolder(c.children, parentFolderId, folder) }
+        })
+      )
+    },
+    []
+  )
+
+  const handleRenameFolder = useCallback(
+    (collectionId: string, folderId: string, name: string) => {
+      setCollections((prev) =>
+        prev.map((c) =>
+          c.id !== collectionId
+            ? c
+            : { ...c, children: renameFolderInTree(c.children, folderId, name) }
+        )
+      )
+    },
+    []
+  )
+
+  const handleDeleteFolder = useCallback(
+    (collectionId: string, folderId: string) => {
+      setCollections((prev) =>
+        prev.map((c) =>
+          c.id !== collectionId
+            ? c
+            : { ...c, children: removeFolderFromTree(c.children, folderId) }
+        )
+      )
+    },
+    []
+  )
 
   const handleSelectRequest = useCallback((collectionId: string, requestId: string) => {
     setActiveCollectionId(collectionId)
@@ -180,7 +347,7 @@ function App(): React.JSX.Element {
         prev.map((c) =>
           c.id !== collectionId
             ? c
-            : { ...c, requests: c.requests.filter((r) => r.id !== requestId) }
+            : { ...c, children: filterRequestsTree(c.children, (r) => r.id !== requestId) }
         )
       )
       if (activeRequestId === requestId) {
@@ -247,6 +414,72 @@ function App(): React.JSX.Element {
     [collections]
   )
 
+  // Export a single collection as a shareable JSON bundle. The bundle is
+  // strictly config-layer data: the collection, any auth profiles it
+  // references (profile definitions only — never resolved secret values),
+  // and any history entries scoped to the collection's request ids. The
+  // receiver's context (environments, secrets) has to be provided on
+  // their side.
+  const handleExportCollection = useCallback(
+    async (collectionId: string) => {
+      const collection = collections.find((c) => c.id === collectionId)
+      if (!collection) return
+      const requestIds = new Set<string>()
+      const referencedProfileIds = new Set<string>()
+      if (collection.authProfileId) referencedProfileIds.add(collection.authProfileId)
+      for (const r of walkRequestsTree(collection.children)) {
+        requestIds.add(r.id)
+        if (r.authProfileId) referencedProfileIds.add(r.authProfileId)
+      }
+      const scopedHistory = history.filter((h) => h.requestId && requestIds.has(h.requestId))
+      const scopedProfiles = authProfiles.filter((p) => referencedProfileIds.has(p.id))
+      const result = await window.api.exportCollection({
+        collectionId,
+        defaultName: collection.name,
+        collection,
+        authProfiles: scopedProfiles,
+        history: scopedHistory
+      })
+      if (result.ok && result.path) {
+        toast.success(`Exported to ${result.path.split('/').pop()}`)
+      } else if (result.error && result.error !== 'cancelled') {
+        toast.error(result.error)
+      }
+    },
+    [collections, authProfiles, history]
+  )
+
+  // Pull in a bundle someone else exported. Incoming collection gets a
+  // fresh id; any auth profiles referenced by the collection are merged
+  // into our config (matching by id so a second import of the same bundle
+  // is idempotent). History entries piggyback but request ids stay intact
+  // so they still link back.
+  const handleImportCollectionFromFile = useCallback(async () => {
+    const result = await window.api.importCollection()
+    if (!result.ok || !result.bundle) {
+      if (result.error && result.error !== 'cancelled') toast.error(result.error)
+      return
+    }
+    const { collection, history: incomingHistory, authProfiles: incomingProfiles } = result.bundle
+    const rehomed: Collection = { ...collection, id: `${Date.now().toString(36)}-imp` }
+    setCollections((prev) => [...prev, rehomed])
+    if (incomingProfiles?.length) {
+      setAuthProfiles((prev) => {
+        const existing = new Set(prev.map((p) => p.id))
+        return [...prev, ...incomingProfiles.filter((p) => !existing.has(p.id))]
+      })
+    }
+    if (incomingHistory?.length) {
+      setHistory((prev) => [...incomingHistory, ...prev].slice(0, HISTORY_MAX))
+    }
+    const importedCount = [...walkRequestsTree(rehomed.children)].length
+    toast.success(
+      `Imported "${rehomed.name}" — ${importedCount} request${importedCount === 1 ? '' : 's'}${
+        incomingHistory?.length ? `, ${incomingHistory.length} history entries` : ''
+      }`
+    )
+  }, [])
+
   const handleUnlinkOpenApi = useCallback((collectionId: string) => {
     setCollections((prev) =>
       prev.map((c) => {
@@ -256,7 +489,7 @@ function App(): React.JSX.Element {
         return {
           ...c,
           openapi: undefined,
-          requests: c.requests.map((r) => ({ ...r, spec: undefined }))
+          children: mapRequestsTree(c.children, (r) => ({ ...r, spec: undefined }))
         }
       })
     )
@@ -307,10 +540,11 @@ function App(): React.JSX.Element {
     // If the original request is still around, select it so the editor
     // matches the response the user is looking at.
     if (entry.requestId) {
+      const reqId = entry.requestId
       for (const c of collections) {
-        if (c.requests.some((r) => r.id === entry.requestId)) {
+        if (treeContainsRequest(c.children, reqId)) {
           setActiveCollectionId(c.id)
-          setActiveRequestId(entry.requestId)
+          setActiveRequestId(reqId)
           break
         }
       }
@@ -321,6 +555,40 @@ function App(): React.JSX.Element {
     setHistory([])
     toast.success('History cleared')
   }, [])
+
+  // One hook at the App level wires every global shortcut. Handlers live
+  // here so they can close over the in-app state. The ones that need an
+  // active request (send, focus URL) early-return if nothing's selected.
+  useShortcuts({
+    'send-request': () => {
+      if (activeRequest) handleSend()
+    },
+    'new-request': () => {
+      const collectionId = activeCollectionId ?? collections[0]?.id
+      if (collectionId) handleNewRequest(collectionId)
+    },
+    'new-collection': () => {
+      handleNewCollection()
+    },
+    'import-openapi': () => {
+      handleImportOpenApi()
+    },
+    'focus-url': () => {
+      requestEditorRef.current?.focusUrl()
+    },
+    'open-history': () => {
+      setHistoryOpen(true)
+    },
+    'focus-sidebar-search': () => {
+      // The sidebar filter input doesn't exist yet — land it with folders.
+      // Leaving the handler registered is harmless; it's a no-op until then.
+    },
+    'open-ai-handoff': () => {
+      // The handoff dialog is owned by McpHandoffButton in the sidebar
+      // footer. We'll expose a programmatic open in a follow-up round;
+      // for now, a no-op keeps the registry happy.
+    }
+  })
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -340,6 +608,11 @@ function App(): React.JSX.Element {
               onImportOpenApi={handleImportOpenApi}
               onSyncOpenApi={handleSyncOpenApi}
               onUnlinkOpenApi={handleUnlinkOpenApi}
+              onExportCollection={handleExportCollection}
+              onImportCollection={handleImportCollectionFromFile}
+              onNewFolder={handleNewFolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
               syncingCollectionId={syncingCollectionId}
               onOpenHistory={() => setHistoryOpen(true)}
               historyCount={history.length}
@@ -357,6 +630,7 @@ function App(): React.JSX.Element {
                   <ResizablePanel defaultSize="45%" minSize="20%">
                     <div className="h-full overflow-auto">
                       <RequestEditor
+                        ref={requestEditorRef}
                         request={activeRequest}
                         sending={sending}
                         onChange={(r) =>

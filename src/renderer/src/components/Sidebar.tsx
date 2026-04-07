@@ -2,13 +2,16 @@ import {
   ChevronRight,
   Clock,
   FileDown,
+  Folder,
   FolderPlus,
   Link2,
   MoreHorizontal,
   Plus,
   RefreshCw,
+  Share2,
   Trash2,
-  Unlink
+  Unlink,
+  Upload
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -21,23 +24,29 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import type { Collection, RequestItem } from '@/lib/storage'
+import type { Collection, FolderNode, RequestItem, TreeNode } from '@/lib/storage'
 import { useState } from 'react'
 import { McpHandoffButton } from '@/components/McpHandoff'
+import { ShortcutTooltip } from '@/components/ShortcutTooltip'
 
 interface SidebarProps {
   collections: Collection[]
   activeRequestId: string | null
   onSelectRequest: (collectionId: string, requestId: string) => void
   onNewCollection: () => void
-  onNewRequest: (collectionId: string) => void
+  onNewRequest: (collectionId: string, parentFolderId?: string) => void
+  onNewFolder: (collectionId: string, parentFolderId?: string) => void
   onRenameCollection: (collectionId: string, name: string) => void
   onRenameRequest: (collectionId: string, requestId: string, name: string) => void
+  onRenameFolder: (collectionId: string, folderId: string, name: string) => void
   onDeleteCollection: (collectionId: string) => void
   onDeleteRequest: (collectionId: string, requestId: string) => void
+  onDeleteFolder: (collectionId: string, folderId: string) => void
   onImportOpenApi: () => void
   onSyncOpenApi: (collectionId: string) => void
   onUnlinkOpenApi: (collectionId: string) => void
+  onExportCollection: (collectionId: string) => void
+  onImportCollection: () => void
   syncingCollectionId: string | null
   onOpenHistory: () => void
   historyCount: number
@@ -68,13 +77,18 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
     onSelectRequest,
     onNewCollection,
     onNewRequest,
+    onNewFolder,
     onRenameCollection,
     onRenameRequest,
+    onRenameFolder,
     onDeleteCollection,
     onDeleteRequest,
+    onDeleteFolder,
     onImportOpenApi,
     onSyncOpenApi,
     onUnlinkOpenApi,
+    onExportCollection,
+    onImportCollection,
     syncingCollectionId,
     onOpenHistory,
     historyCount
@@ -101,36 +115,37 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
           className="flex items-center gap-0.5"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative h-7 w-7"
-            onClick={onOpenHistory}
-            title={historyCount ? `History (${historyCount})` : 'History'}
+          <ShortcutTooltip
+            label={historyCount ? `History (${historyCount})` : 'History'}
+            shortcut="open-history"
           >
-            <Clock className="h-4 w-4" />
-            {historyCount > 0 && (
-              <span className="pointer-events-none absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onImportOpenApi}
-            title="Import from OpenAPI"
-          >
-            <FileDown className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={onNewCollection}
-            title="New collection"
-          >
-            <FolderPlus className="h-4 w-4" />
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-7 w-7"
+              onClick={onOpenHistory}
+            >
+              <Clock className="h-4 w-4" />
+              {historyCount > 0 && (
+                <span className="pointer-events-none absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </Button>
+          </ShortcutTooltip>
+          <ShortcutTooltip label="Import shared collection">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onImportCollection}>
+              <Upload className="h-4 w-4" />
+            </Button>
+          </ShortcutTooltip>
+          <ShortcutTooltip label="Import OpenAPI" shortcut="import-openapi">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onImportOpenApi}>
+              <FileDown className="h-4 w-4" />
+            </Button>
+          </ShortcutTooltip>
+          <ShortcutTooltip label="New collection" shortcut="new-collection">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onNewCollection}>
+              <FolderPlus className="h-4 w-4" />
+            </Button>
+          </ShortcutTooltip>
         </div>
       </div>
 
@@ -234,6 +249,14 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
                         <DropdownMenuItem onClick={() => setEditing(c.id)}>
                           Rename
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onNewFolder(c.id)}>
+                          <FolderPlus className="h-3.5 w-3.5" />
+                          New folder
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onExportCollection(c.id)}>
+                          <Share2 className="h-3.5 w-3.5" />
+                          Share…
+                        </DropdownMenuItem>
                         {linked && (
                           <>
                             <DropdownMenuSeparator />
@@ -267,27 +290,25 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
 
                 {isOpen(c.id) && (
                   <div className="ml-3.5 border-l border-sidebar-border pl-1">
-                    {c.requests.length === 0 ? (
+                    {c.children.length === 0 ? (
                       <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                        No requests
+                        Empty
                       </div>
                     ) : (
-                      c.requests.map((r) => (
-                        <RequestRow
-                          key={r.id}
-                          request={r}
-                          active={r.id === activeRequestId}
-                          editing={editing === r.id}
-                          onSelect={() => onSelectRequest(c.id, r.id)}
-                          onStartRename={() => setEditing(r.id)}
-                          onRename={(name) => {
-                            onRenameRequest(c.id, r.id, name)
-                            setEditing(null)
-                          }}
-                          onCancelRename={() => setEditing(null)}
-                          onDelete={() => onDeleteRequest(c.id, r.id)}
-                        />
-                      ))
+                      <TreeNodeList
+                        nodes={c.children}
+                        collectionId={c.id}
+                        activeRequestId={activeRequestId}
+                        editing={editing}
+                        setEditing={setEditing}
+                        onSelectRequest={onSelectRequest}
+                        onRenameRequest={onRenameRequest}
+                        onDeleteRequest={onDeleteRequest}
+                        onRenameFolder={onRenameFolder}
+                        onDeleteFolder={onDeleteFolder}
+                        onNewRequest={onNewRequest}
+                        onNewFolder={onNewFolder}
+                      />
                     )}
                   </div>
                 )}
@@ -393,6 +414,160 @@ function RequestRow(props: RequestRowProps): React.JSX.Element {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  )
+}
+
+// ---------- Tree rendering ----------
+// Recursive node list. Each level gets its own indent border, matching
+// the collection-level indent so nested folders still read as a tree.
+
+interface TreeNodeListProps {
+  nodes: TreeNode[]
+  collectionId: string
+  activeRequestId: string | null
+  editing: string | null
+  setEditing: (id: string | null) => void
+  onSelectRequest: (collectionId: string, requestId: string) => void
+  onRenameRequest: (collectionId: string, requestId: string, name: string) => void
+  onDeleteRequest: (collectionId: string, requestId: string) => void
+  onRenameFolder: (collectionId: string, folderId: string, name: string) => void
+  onDeleteFolder: (collectionId: string, folderId: string) => void
+  onNewRequest: (collectionId: string, parentFolderId?: string) => void
+  onNewFolder: (collectionId: string, parentFolderId?: string) => void
+}
+
+function TreeNodeList(props: TreeNodeListProps): React.JSX.Element {
+  return (
+    <>
+      {props.nodes.map((node) =>
+        node.kind === 'folder' ? (
+          <FolderRow key={node.id} folder={node} {...props} />
+        ) : (
+          <RequestRow
+            key={node.request.id}
+            request={node.request}
+            active={node.request.id === props.activeRequestId}
+            editing={props.editing === node.request.id}
+            onSelect={() => props.onSelectRequest(props.collectionId, node.request.id)}
+            onStartRename={() => props.setEditing(node.request.id)}
+            onRename={(name) => {
+              props.onRenameRequest(props.collectionId, node.request.id, name)
+              props.setEditing(null)
+            }}
+            onCancelRename={() => props.setEditing(null)}
+            onDelete={() => props.onDeleteRequest(props.collectionId, node.request.id)}
+          />
+        )
+      )}
+    </>
+  )
+}
+
+function FolderRow({
+  folder,
+  ...rest
+}: TreeNodeListProps & { folder: FolderNode }): React.JSX.Element {
+  const [open, setOpen] = useState(true)
+  const {
+    collectionId,
+    editing,
+    setEditing,
+    onRenameFolder,
+    onDeleteFolder,
+    onNewRequest,
+    onNewFolder
+  } = rest
+  const isEditing = editing === folder.id
+
+  return (
+    <div>
+      <div className="group flex items-center gap-1 rounded-md px-2 py-1 hover:bg-sidebar-accent/60">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 items-center gap-1.5 text-left"
+        >
+          <ChevronRight
+            className={cn(
+              'h-3 w-3 shrink-0 text-muted-foreground transition-transform',
+              open && 'rotate-90'
+            )}
+          />
+          <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          {isEditing ? (
+            <Input
+              autoFocus
+              defaultValue={folder.name}
+              onClick={(e) => e.stopPropagation()}
+              onBlur={(e) => {
+                onRenameFolder(collectionId, folder.id, e.target.value || folder.name)
+                setEditing(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                if (e.key === 'Escape') setEditing(null)
+              }}
+              className="h-6 px-1.5 py-0 text-sm"
+            />
+          ) : (
+            <span
+              className="flex-1 truncate text-sm font-medium"
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setEditing(folder.id)
+              }}
+            >
+              {folder.name}
+            </span>
+          )}
+        </button>
+        <div className="flex shrink-0 items-center opacity-0 group-hover:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={() => {
+              setOpen(true)
+              onNewRequest(collectionId, folder.id)
+            }}
+            title="New request"
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5">
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditing(folder.id)}>Rename</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNewFolder(collectionId, folder.id)}>
+                <FolderPlus className="h-3.5 w-3.5" />
+                New folder
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => onDeleteFolder(collectionId, folder.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      {open && (
+        <div className="ml-3 border-l border-sidebar-border pl-1">
+          {folder.children.length === 0 ? (
+            <div className="px-2 py-1 text-[10px] text-muted-foreground">Empty</div>
+          ) : (
+            <TreeNodeList {...rest} nodes={folder.children} />
+          )}
+        </div>
+      )}
     </div>
   )
 }

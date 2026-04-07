@@ -7,7 +7,7 @@ import { promises as fs } from 'fs'
 import { dirname } from 'path'
 import lockfile from 'proper-lockfile'
 import type { StorageAdapter } from '../adapter.js'
-import { emptyStore, type Store } from '../types.js'
+import { emptyStore, normalizeStore, type Store } from '../types.js'
 
 export interface FileSystemAdapterOptions {
   path: string
@@ -24,9 +24,10 @@ async function ensureFile(path: string): Promise<void> {
 
 function parseOrEmpty(raw: string): Store {
   try {
-    const parsed = JSON.parse(raw) as Store
-    if (!parsed || !Array.isArray(parsed.collections)) return emptyStore()
-    return parsed
+    // normalizeStore handles both the new three-slice shape and the legacy
+    // flat `{collections, history}` shape. It also fills in any missing
+    // slices, so partial files (e.g. hand-edited) never crash the app.
+    return normalizeStore(JSON.parse(raw))
   } catch {
     // Corrupt file — don't crash, let the next write heal it.
     return emptyStore()

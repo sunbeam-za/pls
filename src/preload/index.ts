@@ -32,6 +32,24 @@ export interface RequestSpecLink {
   snapshot: RequestSpecSnapshot
 }
 
+// ---------- Config layer ----------
+// (Persistent, user-authored, shareable. What you'd check into git.)
+
+export type SecretRef = string
+
+export type AuthType = 'none' | 'bearer' | 'basic' | 'api-key'
+
+export interface AuthProfile {
+  id: string
+  name: string
+  type: AuthType
+  config:
+    | { type: 'none' }
+    | { type: 'bearer'; tokenRef: SecretRef }
+    | { type: 'basic'; usernameRef: SecretRef; passwordRef: SecretRef }
+    | { type: 'api-key'; in: 'header' | 'query'; name: string; valueRef: SecretRef }
+}
+
 export interface RequestItem {
   id: string
   name: string
@@ -39,7 +57,8 @@ export interface RequestItem {
   url: string
   headers: HeaderEntry[]
   body: string
-  /** Present when this request was generated from an OpenAPI operation. */
+  /** Overrides the collection's inherited auth profile. Undefined = inherit. */
+  authProfileId?: string
   spec?: RequestSpecLink
 }
 
@@ -47,25 +66,63 @@ export type OpenApiSourceType = 'url' | 'file' | 'text'
 
 export interface OpenApiLink {
   sourceType: OpenApiSourceType
-  /** URL or absolute file path. Absent for 'text' sources. */
   sourceLocation?: string
-  /** Raw spec text as last synced. Kept so we can re-parse/diff offline. */
   specText: string
   specHash: string
   lastSyncedAt: number
-  /** Title from info.title (what we used to name the collection). */
   specTitle?: string
-  /** Chosen base URL (first `servers[].url`), used when building request URLs. */
   baseUrl?: string
 }
+
+export interface FolderNode {
+  kind: 'folder'
+  id: string
+  name: string
+  children: TreeNode[]
+  defaultHeaders?: HeaderEntry[]
+  authProfileId?: string
+}
+
+export interface RequestNode {
+  kind: 'request'
+  request: RequestItem
+}
+
+export type TreeNode = FolderNode | RequestNode
 
 export interface Collection {
   id: string
   name: string
-  requests: RequestItem[]
-  /** Present when this collection was generated from an OpenAPI spec. */
+  /** Recursive tree of folders and requests. */
+  children: TreeNode[]
+  /** Headers every request inherits. Merged by key at send time. */
+  defaultHeaders?: HeaderEntry[]
+  /** Auth profile every request inherits unless it sets its own. */
+  authProfileId?: string
   openapi?: OpenApiLink
 }
+
+export interface ConfigSlice {
+  collections: Collection[]
+  authProfiles: AuthProfile[]
+}
+
+// ---------- Context layer ----------
+// (Per-machine. Shape may be shared, values never exported.)
+
+export interface Environment {
+  id: string
+  name: string
+  variables: Record<string, string>
+}
+
+export interface ContextSlice {
+  environments: Environment[]
+  activeEnvironmentId?: string
+}
+
+// ---------- State layer ----------
+// (Persisted runtime telemetry; never exported unless explicitly opted in.)
 
 export interface HistoryEntry {
   id: string
@@ -88,9 +145,16 @@ export interface HistoryEntry {
   }
 }
 
+export interface StateSlice {
+  history: HistoryEntry[]
+}
+
+// ---------- Root ----------
+
 export interface Store {
-  collections: Collection[]
-  history?: HistoryEntry[]
+  config: ConfigSlice
+  context: ContextSlice
+  state: StateSlice
 }
 
 export interface LoadSpecResult {
@@ -126,6 +190,27 @@ export interface McpInfo {
   installed: { claudeDesktop: boolean; cursor: boolean; claudeCode: boolean }
 }
 
+export interface CollectionExport {
+  pls: 1
+  kind: 'collection-export'
+  exportedAt: number
+  collection: Collection
+  authProfiles: AuthProfile[]
+  history: HistoryEntry[]
+}
+
+export interface ExportCollectionResult {
+  ok: boolean
+  path?: string
+  error?: string
+}
+
+export interface ImportCollectionResult {
+  ok: boolean
+  bundle?: CollectionExport
+  error?: string
+}
+
 const api = {
   readStore: (): Promise<Store> => ipcRenderer.invoke('store:read'),
   writeStore: (store: Store): Promise<boolean> => ipcRenderer.invoke('store:write', store),
@@ -136,7 +221,16 @@ const api = {
   loadSpecFromFile: (): Promise<LoadSpecResult> => ipcRenderer.invoke('openapi:loadFromFile'),
   mcpInfo: (): Promise<McpInfo> => ipcRenderer.invoke('mcp:info'),
   getFavicon: (domain: string): Promise<string | null> =>
-    ipcRenderer.invoke('favicon:get', domain)
+    ipcRenderer.invoke('favicon:get', domain),
+  exportCollection: (args: {
+    collectionId: string
+    defaultName: string
+    collection: Collection
+    authProfiles: AuthProfile[]
+    history: HistoryEntry[]
+  }): Promise<ExportCollectionResult> => ipcRenderer.invoke('collection:export', args),
+  importCollection: (): Promise<ImportCollectionResult> =>
+    ipcRenderer.invoke('collection:import')
 }
 
 if (process.contextIsolated) {

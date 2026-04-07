@@ -1,6 +1,13 @@
-import type { Store, Collection, RequestItem } from '../../../preload/index'
+import type {
+  Collection,
+  FolderNode,
+  RequestItem,
+  RequestNode,
+  Store,
+  TreeNode
+} from '../../../preload/index'
 
-export type { Store, Collection, RequestItem }
+export type { Store, Collection, FolderNode, RequestItem, RequestNode, TreeNode }
 
 export const newId = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -17,5 +24,5 @@ export const newRequest = (name = 'Untitled request'): RequestItem => ({
 export const newCollection = (name = 'New collection'): Collection => ({
   id: newId(),
   name,
-  requests: []
+  children: []
 })

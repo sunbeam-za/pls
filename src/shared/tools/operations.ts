@@ -7,8 +7,26 @@
 import type { HttpAdapter } from '../http/adapter.js'
 import type { SendRequestResult } from '../http/types.js'
 import type { StorageAdapter } from '../store/adapter.js'
-import type { Collection, HeaderEntry, HttpMethod, RequestItem, Store } from '../store/types.js'
-import { newId } from '../store/types.js'
+import type {
+  Collection,
+  FolderNode,
+  HeaderEntry,
+  HistoryEntry,
+  HttpMethod,
+  RequestItem,
+  RequestNode,
+  Store
+} from '../store/types.js'
+import {
+  countRequests,
+  findFolderInTree,
+  findRequestAncestry,
+  findRequestInTree,
+  HISTORY_BODY_MAX,
+  HISTORY_MAX_ENTRIES,
+  newId,
+  walkRequests
+} from '../store/types.js'
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
@@ -46,7 +64,7 @@ export interface RequestDetail extends RequestSummary {
 const summarizeCollection = (c: Collection): CollectionSummary => ({
   id: c.id,
   name: c.name,
-  requestCount: c.requests.length,
+  requestCount: countRequests(c.children),
   hasSpec: !!c.openapi,
   specTitle: c.openapi?.specTitle
 })
@@ -72,17 +90,91 @@ function findRequest(
   store: Store,
   requestId: string
 ): { collection: Collection; request: RequestItem } {
-  for (const c of store.collections) {
-    const r = c.requests.find((x) => x.id === requestId)
-    if (r) return { collection: c, request: r }
+  for (const c of store.config.collections) {
+    const hit = findRequestInTree(c.children, requestId)
+    if (hit) return { collection: c, request: hit.request }
   }
   throw new ToolError(`request not found: ${requestId}`)
 }
 
 function findCollection(store: Store, collectionId: string): Collection {
-  const c = store.collections.find((x) => x.id === collectionId)
+  const c = store.config.collections.find((x) => x.id === collectionId)
   if (!c) throw new ToolError(`collection not found: ${collectionId}`)
   return c
+}
+
+/**
+ * Locate a request + the full ancestry chain (collection + enclosing
+ * folders). The ancestry is what `sendSavedRequest` walks to build
+ * inherited headers and auth.
+ */
+function findRequestWithAncestry(
+  store: Store,
+  requestId: string
+): { collection: Collection; folders: FolderNode[]; request: RequestItem } {
+  for (const c of store.config.collections) {
+    const hit = findRequestAncestry(c.children, requestId)
+    if (hit) return { collection: c, folders: hit.folders, request: hit.request }
+  }
+  throw new ToolError(`request not found: ${requestId}`)
+}
+
+/**
+ * Merge several header lists into one. Later lists override earlier by
+ * case-insensitive header key. Disabled header entries are carried
+ * through so the user's intent is preserved — the HTTP adapter is the
+ * one place that filters them out at send time.
+ */
+function mergeHeadersChain(chain: Array<HeaderEntry[] | undefined>): HeaderEntry[] {
+  const byKey = new Map<string, HeaderEntry>()
+  for (const list of chain) {
+    if (!list) continue
+    for (const h of list) {
+      if (!h.key?.trim()) continue
+      byKey.set(h.key.toLowerCase(), { ...h })
+    }
+  }
+  return Array.from(byKey.values())
+}
+
+/**
+ * Turn a send payload + result into a HistoryEntry. The body preview is
+ * truncated at HISTORY_BODY_MAX so the store file doesn't bloat when
+ * agents hit endpoints that return megabytes of JSON.
+ */
+function buildHistoryEntry(
+  send: {
+    method: HttpMethod
+    url: string
+    headers: HeaderEntry[]
+    body: string
+    requestId?: string
+    requestName?: string
+  },
+  result: SendRequestResult
+): HistoryEntry {
+  const body = result.body ?? ''
+  const truncated = body.length > HISTORY_BODY_MAX
+  return {
+    id: newId(),
+    sentAt: Date.now(),
+    requestId: send.requestId,
+    requestName: send.requestName,
+    method: send.method,
+    url: send.url,
+    headers: send.headers,
+    body: send.body,
+    response: {
+      ok: result.ok,
+      status: result.status,
+      statusText: result.statusText,
+      durationMs: result.durationMs,
+      size: result.size,
+      error: result.error,
+      bodyPreview: truncated ? body.slice(0, HISTORY_BODY_MAX) : body,
+      bodyTruncated: truncated
+    }
+  }
 }
 
 function normalizeHeaders(headers: unknown): HeaderEntry[] {
@@ -133,6 +225,18 @@ export interface Ops {
     }
   ): Promise<RequestDetail>
   deleteRequest(requestId: string): Promise<{ deleted: true; id: string }>
+  /**
+   * Create a folder at the root of a collection, or inside another folder
+   * if `parentFolderId` is given. Folders are purely organisational — the
+   * inheritance behaviour (headers, auth) is controlled by the caller
+   * populating `defaultHeaders` / `authProfileId` afterwards.
+   */
+  createFolder(input: {
+    collectionId: string
+    name?: string
+    parentFolderId?: string
+  }): Promise<{ id: string; name: string }>
+  deleteFolder(folderId: string): Promise<{ deleted: true; id: string }>
   sendSavedRequest(
     requestId: string,
     overrides?: { url?: string; headers?: HeaderEntry[]; body?: string }
@@ -155,13 +259,17 @@ export function createOps(adapters: OpsAdapters): Ops {
   return {
     async listCollections() {
       const store = await adapter.read()
-      return store.collections.map(summarizeCollection)
+      return store.config.collections.map(summarizeCollection)
     },
 
     async listRequests(collectionId) {
       const store = await adapter.read()
       const collection = findCollection(store, collectionId)
-      return collection.requests.map((r) => summarizeRequest(collection, r))
+      const out: RequestSummary[] = []
+      for (const r of walkRequests(collection.children)) {
+        out.push(summarizeRequest(collection, r))
+      }
+      return out
     },
 
     async getRequest(requestId) {
@@ -172,8 +280,12 @@ export function createOps(adapters: OpsAdapters): Ops {
 
     async createCollection(name) {
       return adapter.mutate((store) => {
-        const collection: Collection = { id: newId(), name: name.trim() || 'New collection', requests: [] }
-        store.collections.push(collection)
+        const collection: Collection = {
+          id: newId(),
+          name: name.trim() || 'New collection',
+          children: []
+        }
+        store.config.collections.push(collection)
         return summarizeCollection(collection)
       })
     },
@@ -189,7 +301,9 @@ export function createOps(adapters: OpsAdapters): Ops {
           headers: normalizeHeaders(input.headers),
           body: input.body ?? ''
         }
-        collection.requests.push(request)
+        // New requests land at the collection root. A separate tool
+        // (create_request_in_folder, future) can target a nested folder.
+        collection.children.push({ kind: 'request', request } as RequestNode)
         return detailRequest(collection, request)
       })
     },
@@ -208,10 +322,10 @@ export function createOps(adapters: OpsAdapters): Ops {
 
     async deleteRequest(requestId) {
       return adapter.mutate((store) => {
-        for (const c of store.collections) {
-          const idx = c.requests.findIndex((r) => r.id === requestId)
-          if (idx >= 0) {
-            c.requests.splice(idx, 1)
+        for (const c of store.config.collections) {
+          const hit = findRequestInTree(c.children, requestId)
+          if (hit) {
+            hit.container.splice(hit.index, 1)
             return { deleted: true as const, id: requestId }
           }
         }
@@ -219,24 +333,84 @@ export function createOps(adapters: OpsAdapters): Ops {
       })
     },
 
-    async sendSavedRequest(requestId, overrides) {
-      const store = await adapter.read()
-      const { request } = findRequest(store, requestId)
-      return http.send({
-        method: request.method,
-        url: overrides?.url ?? request.url,
-        headers: overrides?.headers ?? request.headers,
-        body: overrides?.body ?? request.body
+    async createFolder(input) {
+      return adapter.mutate((store) => {
+        const collection = findCollection(store, input.collectionId)
+        const folder: FolderNode = {
+          kind: 'folder',
+          id: newId(),
+          name: input.name?.trim() || 'New folder',
+          children: []
+        }
+        if (input.parentFolderId) {
+          const hit = findFolderInTree(collection.children, input.parentFolderId)
+          if (!hit) throw new ToolError(`folder not found: ${input.parentFolderId}`)
+          hit.folder.children.push(folder)
+        } else {
+          collection.children.push(folder)
+        }
+        return { id: folder.id, name: folder.name }
       })
     },
 
+    async deleteFolder(folderId) {
+      return adapter.mutate((store) => {
+        for (const c of store.config.collections) {
+          const hit = findFolderInTree(c.children, folderId)
+          if (hit) {
+            hit.container.splice(hit.index, 1)
+            return { deleted: true as const, id: folderId }
+          }
+        }
+        throw new ToolError(`folder not found: ${folderId}`)
+      })
+    },
+
+    async sendSavedRequest(requestId, overrides) {
+      const store = await adapter.read()
+      const { request, collection, folders } = findRequestWithAncestry(store, requestId)
+      // Postman-style header inheritance: collection defaults, then each
+      // folder top-down, then the request. Later keys overwrite earlier
+      // ones (case-insensitive match on key), which is what every client
+      // using this store will expect.
+      const mergedHeaders = mergeHeadersChain([
+        collection.defaultHeaders,
+        ...folders.map((f) => f.defaultHeaders),
+        request.headers
+      ])
+      const payload = {
+        method: request.method,
+        url: overrides?.url ?? request.url,
+        headers: overrides?.headers ?? mergedHeaders,
+        body: overrides?.body ?? request.body
+      }
+      const result = await http.send(payload)
+      // Record in history so the live feed and persistent log both see it.
+      // The mutate runs *after* the HTTP call so we don't hold the file
+      // lock during the network round-trip.
+      await adapter.mutate((s) => {
+        const entry = buildHistoryEntry(
+          { ...payload, requestId: request.id, requestName: request.name },
+          result
+        )
+        s.state.history = [entry, ...s.state.history].slice(0, HISTORY_MAX_ENTRIES)
+      })
+      return result
+    },
+
     async sendAdHoc(payload) {
-      return http.send({
+      const normalized = {
         method: normalizeMethod(payload.method, 'GET'),
         url: payload.url,
         headers: normalizeHeaders(payload.headers),
         body: payload.body ?? ''
+      }
+      const result = await http.send(normalized)
+      await adapter.mutate((s) => {
+        const entry = buildHistoryEntry(normalized, result)
+        s.state.history = [entry, ...s.state.history].slice(0, HISTORY_MAX_ENTRIES)
       })
+      return result
     }
   }
 }

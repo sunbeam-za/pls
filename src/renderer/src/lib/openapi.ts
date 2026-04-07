@@ -25,10 +25,45 @@ import type {
   OpenApiLink,
   OpenApiSourceType,
   RequestItem,
+  RequestNode,
   RequestSpecLink,
-  RequestSpecSnapshot
+  RequestSpecSnapshot,
+  TreeNode
 } from '../../../preload/index'
 import { newId } from './storage'
+
+// Collect every request in the tree into a flat array, preserving order.
+function flattenRequests(nodes: TreeNode[]): RequestItem[] {
+  const out: RequestItem[] = []
+  for (const node of nodes) {
+    if (node.kind === 'request') out.push(node.request)
+    else out.push(...flattenRequests(node.children))
+  }
+  return out
+}
+
+// Rebuild a tree by replacing each request (matched by id) with the
+// version from `updates`. Requests that aren't in `updates` are dropped.
+// Folder structure is preserved.
+function replaceRequestsInTree(
+  nodes: TreeNode[],
+  updates: Map<string, RequestItem>
+): TreeNode[] {
+  const out: TreeNode[] = []
+  for (const node of nodes) {
+    if (node.kind === 'request') {
+      const replacement = updates.get(node.request.id)
+      if (replacement) {
+        out.push({ kind: 'request', request: replacement } as RequestNode)
+      }
+      // Requests not present in `updates` are intentionally dropped —
+      // callers decide what belongs before calling this.
+    } else {
+      out.push({ ...node, children: replaceRequestsInTree(node.children, updates) })
+    }
+  }
+  return out
+}
 
 const HTTP_METHODS: readonly HttpMethod[] = [
   'GET',
@@ -336,7 +371,7 @@ export async function collectionFromSpec(
   const collection: Collection = {
     id: newId(),
     name: info?.title?.trim() || 'Imported API',
-    requests,
+    children: requests.map((request) => ({ kind: 'request', request })),
     openapi: link
   }
   return { collection, operationCount: operations.length }
@@ -482,7 +517,12 @@ export async function resyncCollection(
   let unchanged = 0
   let conflicts = 0
 
-  const mergedRequests: RequestItem[] = collection.requests.map((req) => {
+  // Flatten the current tree so the merge can work on a flat list. We
+  // preserve the tree structure when rebuilding — each existing request
+  // stays exactly where it was (root or folder), only the request payload
+  // changes. New spec-added requests land at the collection root.
+  const existingRequests = flattenRequests(collection.children)
+  const mergedRequests: RequestItem[] = existingRequests.map((req) => {
     const key = requestKey(req)
     if (!key) return req // user-added request
 
@@ -502,29 +542,39 @@ export async function resyncCollection(
     return next
   })
 
+  const newRequestNodes: RequestNode[] = []
   for (const op of operations) {
     const key = opKey(op)
     if (seen.has(key)) continue
     added++
-    mergedRequests.push({
-      id: newId(),
-      name: op.name,
-      method: op.snapshot.method,
-      url: op.snapshot.url,
-      headers: op.snapshot.headers.map((h) => ({ ...h })),
-      body: op.snapshot.body,
-      spec: {
-        operationId: op.operationId,
-        specPath: op.path,
-        specMethod: op.method,
-        snapshot: cloneSnapshot(op.snapshot)
+    newRequestNodes.push({
+      kind: 'request',
+      request: {
+        id: newId(),
+        name: op.name,
+        method: op.snapshot.method,
+        url: op.snapshot.url,
+        headers: op.snapshot.headers.map((h) => ({ ...h })),
+        body: op.snapshot.body,
+        spec: {
+          operationId: op.operationId,
+          specPath: op.path,
+          specMethod: op.method,
+          snapshot: cloneSnapshot(op.snapshot)
+        }
       }
     })
   }
 
+  // Rebuild the tree with the merged requests in their original positions,
+  // then append any newly-added spec requests at the collection root.
+  const updatesById = new Map(mergedRequests.map((r) => [r.id, r]))
+  const rebuiltChildren = replaceRequestsInTree(collection.children, updatesById)
+  rebuiltChildren.push(...newRequestNodes)
+
   const nextCollection: Collection = {
     ...collection,
-    requests: mergedRequests,
+    children: rebuiltChildren,
     openapi: {
       ...collection.openapi,
       specText: newSpecText,

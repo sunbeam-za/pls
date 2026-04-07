@@ -199,6 +199,94 @@ async function loadSpecFromFile(): Promise<LoadSpecResult> {
   }
 }
 
+// ---------- Collection share/export ----------
+// A "collection export" is a self-contained JSON bundle: the collection
+// itself + any history entries that reference requests inside it. Another
+// dev can drop this file into pls and get the same saved requests plus
+// the sender's run history, all in one go. Keep the format flat and boring
+// so it's easy to hand-edit or diff in git.
+
+const EXPORT_FORMAT_VERSION = 1 as const
+
+interface CollectionExport {
+  pls: typeof EXPORT_FORMAT_VERSION
+  kind: 'collection-export'
+  exportedAt: number
+  /** The config slice relevant to the collection. */
+  collection: unknown
+  /** Any auth profiles the collection references. Definitions only — no secrets. */
+  authProfiles: unknown[]
+  /** Optional history scoped to this collection's requests. */
+  history: unknown[]
+}
+
+interface ExportResult {
+  ok: boolean
+  path?: string
+  error?: string
+}
+
+async function exportCollection(
+  collectionId: string,
+  defaultName: string,
+  payload: { collection: unknown; authProfiles: unknown[]; history: unknown[] }
+): Promise<ExportResult> {
+  const result = await dialog.showSaveDialog({
+    title: 'Export collection',
+    defaultPath: `${defaultName || 'collection'}.pls.json`,
+    filters: [{ name: 'pls export', extensions: ['json'] }]
+  })
+  if (result.canceled || !result.filePath) {
+    return { ok: false, error: 'cancelled' }
+  }
+  const bundle: CollectionExport = {
+    pls: EXPORT_FORMAT_VERSION,
+    kind: 'collection-export',
+    exportedAt: Date.now(),
+    collection: payload.collection,
+    authProfiles: payload.authProfiles,
+    history: payload.history
+  }
+  try {
+    await fs.writeFile(result.filePath, JSON.stringify(bundle, null, 2), 'utf-8')
+    return { ok: true, path: result.filePath }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  // collectionId is passed through for future telemetry — unused today.
+  void collectionId
+}
+
+interface ImportResult {
+  ok: boolean
+  bundle?: CollectionExport
+  error?: string
+}
+
+async function importCollection(): Promise<ImportResult> {
+  const result = await dialog.showOpenDialog({
+    title: 'Import collection',
+    properties: ['openFile'],
+    filters: [
+      { name: 'pls export', extensions: ['json'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false, error: 'cancelled' }
+  }
+  try {
+    const text = await fs.readFile(result.filePaths[0], 'utf-8')
+    const parsed = JSON.parse(text) as CollectionExport
+    if (parsed.kind !== 'collection-export' || typeof parsed.pls !== 'number') {
+      return { ok: false, error: 'Not a pls collection export' }
+    }
+    return { ok: true, bundle: parsed }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
 // ---------- Window ----------
 
 function createWindow(): void {
@@ -261,6 +349,25 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('openapi:loadFromUrl', async (_e, url: string) => loadSpecFromUrl(url))
   ipcMain.handle('openapi:loadFromFile', async () => loadSpecFromFile())
+  ipcMain.handle(
+    'collection:export',
+    async (
+      _e,
+      args: {
+        collectionId: string
+        defaultName: string
+        collection: unknown
+        authProfiles: unknown[]
+        history: unknown[]
+      }
+    ) =>
+      exportCollection(args.collectionId, args.defaultName, {
+        collection: args.collection,
+        authProfiles: args.authProfiles,
+        history: args.history
+      })
+  )
+  ipcMain.handle('collection:import', async () => importCollection())
   ipcMain.handle('mcp:info', async (): Promise<McpInfo> => getMcpInfo())
   ipcMain.handle('favicon:get', async (_e, domain: string): Promise<string | null> =>
     fetchFavicon(domain)

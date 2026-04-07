@@ -16,6 +16,7 @@ import { join } from 'path'
 import { z } from 'zod'
 import { createHttpAdapter, parseHttpSpecFromEnv } from '../shared/http/index.js'
 import { createStorageAdapter, parseStorageSpecFromEnv } from '../shared/store/index.js'
+import { countRequests } from '../shared/store/types.js'
 import { createOps, ToolError } from '../shared/tools/operations.js'
 
 // Storage resolution order:
@@ -119,6 +120,34 @@ server.registerTool(
 )
 
 server.registerTool(
+  'create_folder',
+  {
+    title: 'Create folder',
+    description:
+      'Create a folder inside a collection. Optionally nest it inside another folder by passing parentFolderId. Folders group requests and can carry default headers / auth that cascade to their descendants.',
+    inputSchema: {
+      collectionId: z.string(),
+      name: z.string().optional(),
+      parentFolderId: z.string().optional()
+    }
+  },
+  async (input) => safe(() => ops.createFolder(input))
+)
+
+server.registerTool(
+  'delete_folder',
+  {
+    title: 'Delete folder',
+    description: 'Delete a folder and everything inside it. Destructive — the requests inside are gone.',
+    inputSchema: {
+      folderId: z.string()
+    },
+    annotations: { destructiveHint: true }
+  },
+  async ({ folderId }) => safe(() => ops.deleteFolder(folderId))
+)
+
+server.registerTool(
   'create_request',
   {
     title: 'Create request',
@@ -209,14 +238,17 @@ server.registerResource(
     list: async () => {
       const store = await storage.read()
       return {
-        resources: store.collections.map((c) => ({
-          uri: `pls://collections/${c.id}`,
-          name: c.name,
-          description: `${c.requests.length} request${c.requests.length === 1 ? '' : 's'}${
-            c.openapi ? ` · linked to ${c.openapi.specTitle ?? 'OpenAPI spec'}` : ''
-          }`,
-          mimeType: 'application/json'
-        }))
+        resources: store.config.collections.map((c) => {
+          const n = countRequests(c.children)
+          return {
+            uri: `pls://collections/${c.id}`,
+            name: c.name,
+            description: `${n} request${n === 1 ? '' : 's'}${
+              c.openapi ? ` · linked to ${c.openapi.specTitle ?? 'OpenAPI spec'}` : ''
+            }`,
+            mimeType: 'application/json'
+          }
+        })
       }
     }
   }),
@@ -224,7 +256,7 @@ server.registerResource(
   async (uri, { collectionId }) => {
     const store = await storage.read()
     const id = Array.isArray(collectionId) ? collectionId[0] : collectionId
-    const collection = store.collections.find((c) => c.id === id)
+    const collection = store.config.collections.find((c) => c.id === id)
     if (!collection) throw new Error(`collection not found: ${id}`)
     return {
       contents: [
@@ -244,7 +276,7 @@ server.registerResource(
     list: async () => {
       const store = await storage.read()
       return {
-        resources: store.collections
+        resources: store.config.collections
           .filter((c) => !!c.openapi)
           .map((c) => ({
             uri: `pls://specs/${c.id}`,
@@ -259,7 +291,7 @@ server.registerResource(
   async (uri, { collectionId }) => {
     const store = await storage.read()
     const id = Array.isArray(collectionId) ? collectionId[0] : collectionId
-    const collection = store.collections.find((c) => c.id === id)
+    const collection = store.config.collections.find((c) => c.id === id)
     if (!collection?.openapi) throw new Error(`no spec linked to collection ${id}`)
     return {
       contents: [
