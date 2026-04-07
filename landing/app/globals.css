@@ -11,10 +11,8 @@
   --muted: #8a857c;
   --accent: #d93f0b;
 
-  /* only three text sizes */
-  --t-xl: 200px; /* wordmark */
-  --t-md: 26px; /* tagline */
-  --t-base: 16px; /* everything else */
+  /* one size. */
+  --t-base: 17px;
 }
 
 html,
@@ -72,21 +70,12 @@ body {
   font-style: italic;
 }
 
-.wordmark {
-  font-weight: 600;
-  font-size: var(--t-xl);
-  line-height: 0.78;
-  letter-spacing: -0.09em;
-  margin-top: 36px;
-  font-feature-settings: 'kern', 'liga';
-}
-
 .tagline {
-  font-size: var(--t-md);
-  line-height: 1.18;
-  letter-spacing: -0.035em;
-  margin-top: 28px;
-  max-width: 18ch;
+  font-weight: 400;
+  line-height: 1.5;
+  margin-top: 48px;
+  max-width: 60ch;
+  font-style: italic;
 }
 
 .tagline em {
@@ -252,10 +241,6 @@ body {
 }
 
 @media (max-width: 600px) {
-  :root {
-    --t-xl: 120px;
-    --t-md: 22px;
-  }
   .bullets {
     grid-template-columns: 1fr;
   }

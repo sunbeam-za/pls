@@ -18,12 +18,9 @@ export default function Page() {
         <span className="meta">an agent-native request library</span>
       </header>
 
-      <h1 className="wordmark">“pls”</h1>
-
-      <p className="tagline">
-        an <em>agent-native</em> request library.<br />
-        collecting intelligence, in drips.
-      </p>
+      <h1 className="tagline">
+        an <em>agent-native</em> request library. collecting intelligence, in drips.
+      </h1>
 
       <p className="lede">
         agents make hundreds of http calls a day. “pls” catches each one, files it, and turns the
