@@ -6,6 +6,8 @@
 
 import type { HttpAdapter } from '../http/adapter.js'
 import type { SendRequestResult } from '../http/types.js'
+import type { SecretsAdapter } from '../secrets/adapter.js'
+import { createEnvSecretsAdapter } from '../secrets/adapters/env.js'
 import type { StorageAdapter } from '../store/adapter.js'
 import type {
   Collection,
@@ -27,6 +29,7 @@ import {
   newId,
   walkRequests
 } from '../store/types.js'
+import { applyQueryParams, resolveAuthProfile } from './auth.js'
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
@@ -252,10 +255,32 @@ export interface Ops {
 export interface OpsAdapters {
   storage: StorageAdapter
   http: HttpAdapter
+  /** Optional secrets resolver. Defaults to env-vars if omitted. */
+  secrets?: SecretsAdapter
+}
+
+/**
+ * Find the nearest auth profile id, walking the ancestry chain upward
+ * from the request: request → closest folder with one → farther folders
+ * → collection. Returns undefined if nothing along the chain has
+ * opinions about auth.
+ */
+function resolveEffectiveProfileId(
+  collection: Collection,
+  folders: FolderNode[],
+  request: RequestItem
+): string | undefined {
+  if (request.authProfileId) return request.authProfileId
+  // Walk folders inside-out (closest ancestor wins).
+  for (let i = folders.length - 1; i >= 0; i--) {
+    if (folders[i].authProfileId) return folders[i].authProfileId
+  }
+  return collection.authProfileId
 }
 
 export function createOps(adapters: OpsAdapters): Ops {
   const { storage: adapter, http } = adapters
+  const secrets = adapters.secrets ?? createEnvSecretsAdapter()
   return {
     async listCollections() {
       const store = await adapter.read()
@@ -373,14 +398,30 @@ export function createOps(adapters: OpsAdapters): Ops {
       // folder top-down, then the request. Later keys overwrite earlier
       // ones (case-insensitive match on key), which is what every client
       // using this store will expect.
-      const mergedHeaders = mergeHeadersChain([
+      const baseHeaders = mergeHeadersChain([
         collection.defaultHeaders,
         ...folders.map((f) => f.defaultHeaders),
         request.headers
       ])
+
+      // Auth resolution. Walk the ancestry looking for the closest
+      // profile id, look the profile up, then resolve its secret refs
+      // via the injected SecretsAdapter. Auth-contributed headers merge
+      // on top of the inherited chain so a request-level Authorization
+      // header still wins if the user set one explicitly.
+      const profileId = resolveEffectiveProfileId(collection, folders, request)
+      const profile = profileId
+        ? store.config.authProfiles.find((p) => p.id === profileId)
+        : undefined
+      const auth = await resolveAuthProfile(profile, secrets)
+      const mergedHeaders = mergeHeadersChain([auth.headers, baseHeaders])
+
+      const targetUrl = overrides?.url ?? request.url
+      const urlWithAuthQuery = applyQueryParams(targetUrl, auth.queryParams)
+
       const payload = {
         method: request.method,
-        url: overrides?.url ?? request.url,
+        url: urlWithAuthQuery,
         headers: overrides?.headers ?? mergedHeaders,
         body: overrides?.body ?? request.body
       }

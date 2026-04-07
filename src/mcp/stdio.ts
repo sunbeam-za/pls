@@ -15,6 +15,7 @@ import envPaths from 'env-paths'
 import { join } from 'path'
 import { z } from 'zod'
 import { createHttpAdapter, parseHttpSpecFromEnv } from '../shared/http/index.js'
+import { createSecretsAdapter, parseSecretsSpecFromEnv } from '../shared/secrets/index.js'
 import { createStorageAdapter, parseStorageSpecFromEnv } from '../shared/store/index.js'
 import { countRequests } from '../shared/store/types.js'
 import { createOps, ToolError } from '../shared/tools/operations.js'
@@ -34,8 +35,11 @@ const storage = createStorageAdapter(storageSpec)
 // Agents can pin the transport via PLS_HTTP_SPEC — useful for letting an
 // MCP client drive a mock transport during CI or rehearsals.
 const http = createHttpAdapter(parseHttpSpecFromEnv(process.env) ?? { type: 'fetch' })
+// Secrets default to env-vars. Claude Desktop / Cursor spawn this process
+// as a subprocess and can inject secrets via their env config block.
+const secrets = createSecretsAdapter(parseSecretsSpecFromEnv(process.env) ?? { type: 'env' })
 
-const ops = createOps({ storage, http })
+const ops = createOps({ storage, http, secrets })
 
 const server = new McpServer(
   { name: 'pls', version: '0.1.0' },

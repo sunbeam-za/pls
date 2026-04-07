@@ -12,6 +12,7 @@ import { RequestEditor, type RequestEditorHandle } from '@/components/RequestEdi
 import { ResponseViewer } from '@/components/ResponseViewer'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import { HistoryDialog } from '@/components/HistoryDialog'
+import { AuthProfilesDialog } from '@/components/AuthProfilesDialog'
 import { LiveFeed } from '@/components/LiveFeed'
 import { Button } from '@/components/ui/button'
 import { Radio } from 'lucide-react'
@@ -168,6 +169,7 @@ function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [authProfilesOpen, setAuthProfilesOpen] = useState(false)
   const [syncingCollectionId, setSyncingCollectionId] = useState<string | null>(null)
   const [liveMode, setLiveMode] = useState(false)
   const [newestHistoryId, setNewestHistoryId] = useState<string | null>(null)
@@ -655,6 +657,8 @@ function App(): React.JSX.Element {
               syncingCollectionId={syncingCollectionId}
               onOpenHistory={() => setHistoryOpen(true)}
               historyCount={history.length}
+              onOpenAuthProfiles={() => setAuthProfilesOpen(true)}
+              authProfileCount={authProfiles.length}
             />
           </ResizablePanel>
           <ResizableHandle />
@@ -706,6 +710,11 @@ function App(): React.JSX.Element {
                           updateRequest(activeCollectionId, activeRequest.id, r)
                         }
                         onSend={handleSend}
+                        authProfiles={authProfiles}
+                        inheritedAuthProfileId={
+                          collections.find((c) => c.id === activeCollectionId)?.authProfileId
+                        }
+                        onManageAuthProfiles={() => setAuthProfilesOpen(true)}
                       />
                     </div>
                   </ResizablePanel>
@@ -736,6 +745,12 @@ function App(): React.JSX.Element {
           entries={history}
           onReplay={handleReplayHistory}
           onClear={handleClearHistory}
+        />
+        <AuthProfilesDialog
+          open={authProfilesOpen}
+          onOpenChange={setAuthProfilesOpen}
+          profiles={authProfiles}
+          onChange={setAuthProfiles}
         />
         <Toaster theme="dark" />
       </div>

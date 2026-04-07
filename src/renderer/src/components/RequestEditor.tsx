@@ -12,7 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SHORTCUTS } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
-import type { HttpMethod, RequestItem } from '../../../preload/index'
+import type { AuthProfile, HttpMethod, RequestItem } from '../../../preload/index'
 import { HeadersEditor } from './HeadersEditor'
 import { CodeEditor } from './CodeEditor'
 
@@ -39,13 +39,21 @@ interface RequestEditorProps {
   sending: boolean
   onChange: (request: RequestItem) => void
   onSend: () => void
+  authProfiles: AuthProfile[]
+  /** The effective profile id inherited from the enclosing collection/folder, if any. */
+  inheritedAuthProfileId?: string
+  onManageAuthProfiles: () => void
 }
 
 export const RequestEditor = forwardRef<RequestEditorHandle, RequestEditorProps>(
-  function RequestEditor({ request, sending, onChange, onSend }, ref): React.JSX.Element {
+  function RequestEditor(
+    { request, sending, onChange, onSend, authProfiles, inheritedAuthProfileId, onManageAuthProfiles },
+    ref
+  ): React.JSX.Element {
   const enabledHeaderCount = request.headers.filter((h) => h.enabled && h.key.trim()).length
   const bodyShown = !['GET', 'HEAD'].includes(request.method)
   const urlRef = useRef<HTMLInputElement>(null)
+  const hasCustomAuth = request.authProfileId !== undefined
 
   useImperativeHandle(
     ref,
@@ -118,6 +126,12 @@ export const RequestEditor = forwardRef<RequestEditorHandle, RequestEditorProps>
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="auth">
+              Auth
+              {(hasCustomAuth || inheritedAuthProfileId) && (
+                <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
+              )}
+            </TabsTrigger>
             {bodyShown && (
               <TabsTrigger value="body">
                 Body
@@ -136,6 +150,17 @@ export const RequestEditor = forwardRef<RequestEditorHandle, RequestEditorProps>
           />
         </TabsContent>
 
+        <TabsContent value="auth" className="m-0 p-5">
+          <AuthPicker
+            value={request.authProfileId}
+            hasCustomValue={hasCustomAuth}
+            inheritedId={inheritedAuthProfileId}
+            profiles={authProfiles}
+            onChange={(next) => onChange({ ...request, authProfileId: next })}
+            onManage={onManageAuthProfiles}
+          />
+        </TabsContent>
+
         {bodyShown && (
           <TabsContent value="body" className="m-0 p-5">
             <CodeEditor
@@ -151,3 +176,89 @@ export const RequestEditor = forwardRef<RequestEditorHandle, RequestEditorProps>
   )
   }
 )
+
+// ---------- AuthPicker ----------
+// Three states for a request's auth:
+//   undefined  → inherit from the collection/folder ancestry
+//   'none'     → explicitly override to no auth (wins over inheritance)
+//   '<id>'     → explicitly use the named profile
+//
+// The Select exposes "Inherit" as a sentinel value because HTML selects
+// can't bind to undefined. We map it back to undefined on the way out.
+
+const INHERIT = '__inherit__'
+const NONE = '__none__'
+
+function AuthPicker({
+  value,
+  hasCustomValue,
+  inheritedId,
+  profiles,
+  onChange,
+  onManage
+}: {
+  value: string | undefined
+  hasCustomValue: boolean
+  inheritedId?: string
+  profiles: AuthProfile[]
+  onChange: (next: string | undefined) => void
+  onManage: () => void
+}): React.JSX.Element {
+  // Distinguish "explicitly cleared" (value === 'none' sentinel → stored as
+  // null in the store, but we don't model that — instead we treat undefined
+  // as inherit and an id as override). v1 simplification: the picker only
+  // supports Inherit / <profile>. An explicit "none" override isn't exposed
+  // yet — not a blocker for the typical workflow.
+  const selectValue = hasCustomValue ? (value ?? NONE) : INHERIT
+  const inheritedProfile = inheritedId
+    ? profiles.find((p) => p.id === inheritedId)
+    : undefined
+
+  return (
+    <div className="max-w-md space-y-3">
+      <div className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        Auth profile
+      </div>
+      <Select
+        value={selectValue}
+        onValueChange={(v) => {
+          if (v === INHERIT) onChange(undefined)
+          else onChange(v)
+        }}
+      >
+        <SelectTrigger className="h-9">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={INHERIT}>
+            {inheritedProfile
+              ? `Inherit — ${inheritedProfile.name}`
+              : 'Inherit (none set by parent)'}
+          </SelectItem>
+          {profiles.length > 0 && (
+            <>
+              {profiles.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                  <span className="ml-2 text-[10px] text-muted-foreground">{p.type}</span>
+                </SelectItem>
+              ))}
+            </>
+          )}
+        </SelectContent>
+      </Select>
+      <button
+        type="button"
+        onClick={onManage}
+        className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+      >
+        Manage profiles…
+      </button>
+      <div className="rounded-md border border-dashed border-border/60 p-3 text-[10px] leading-relaxed text-muted-foreground">
+        Profiles reference credentials by name — e.g. <code>env:GITHUB_PAT</code>. The actual
+        token is read from your shell env at send time, never stored in the collection. Request
+        auth wins over folder auth wins over collection auth.
+      </div>
+    </div>
+  )
+}

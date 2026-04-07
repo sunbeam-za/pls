@@ -4,6 +4,7 @@ import {
   FileDown,
   Folder,
   FolderPlus,
+  KeyRound,
   Link2,
   MoreHorizontal,
   Plus,
@@ -50,6 +51,8 @@ interface SidebarProps {
   syncingCollectionId: string | null
   onOpenHistory: () => void
   historyCount: number
+  onOpenAuthProfiles: () => void
+  authProfileCount: number
 }
 
 function formatSyncTime(ts: number): string {
@@ -91,7 +94,9 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
     onImportCollection,
     syncingCollectionId,
     onOpenHistory,
-    historyCount
+    historyCount,
+    onOpenAuthProfiles,
+    authProfileCount
   } = props
 
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -129,6 +134,18 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
               {historyCount > 0 && (
                 <span className="pointer-events-none absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
               )}
+            </Button>
+          </ShortcutTooltip>
+          <ShortcutTooltip
+            label={authProfileCount ? `Auth profiles (${authProfileCount})` : 'Auth profiles'}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={onOpenAuthProfiles}
+            >
+              <KeyRound className="h-4 w-4" />
             </Button>
           </ShortcutTooltip>
           <ShortcutTooltip label="Import shared collection">
