@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: pls-app
+appId: com.pls.app
+productName: pls
 directories:
   buildResources: build
 files:
@@ -12,7 +12,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: pls-app
+  executableName: pls
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -33,8 +33,8 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
-  category: Utility
+  maintainer: pls
+  category: Development
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

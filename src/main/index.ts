@@ -4,6 +4,10 @@ import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
+// Set the app name as early as possible so the macOS menu and dock show "pls"
+// (in dev, electron defaults this to "Electron").
+app.setName('pls')
+
 // ---------- Storage ----------
 // Single JSON file in userData with all collections + requests.
 // Simple, atomic, no migrations needed for v0.
@@ -142,7 +146,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.pls')
+  electronApp.setAppUserModelId('com.pls.app')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

@@ -28,18 +28,26 @@ function App(): React.JSX.Element {
   const [loaded, setLoaded] = useState(false)
   const persistTimer = useRef<number | null>(null)
 
-  // Load on mount
+  // Load on mount. Guard against StrictMode double-mount: a stale resolve
+  // from the first effect could otherwise stomp state set after the user
+  // started interacting (which made "Create collection" appear no-op).
   useEffect(() => {
+    let cancelled = false
     window.api
       .readStore()
       .then((store) => {
+        if (cancelled) return
         setCollections(store.collections ?? [])
         setLoaded(true)
       })
       .catch((err) => {
+        if (cancelled) return
         console.error('Failed to load store', err)
         setLoaded(true)
       })
+    return (): void => {
+      cancelled = true
+    }
   }, [])
 
   // Debounced persist on change
@@ -169,9 +177,9 @@ function App(): React.JSX.Element {
 
   return (
     <TooltipProvider delayDuration={250}>
-      <div className="dark h-screen w-screen overflow-hidden bg-background text-foreground">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
-          <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+      <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
+        <ResizablePanelGroup orientation="horizontal" className="h-full">
+          <ResizablePanel defaultSize={22} minSize={16} maxSize={40}>
             <Sidebar
               collections={collections}
               activeRequestId={activeRequestId}
@@ -192,7 +200,7 @@ function App(): React.JSX.Element {
                 style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
               />
               {activeRequest && activeCollectionId ? (
-                <ResizablePanelGroup direction="vertical" className="flex-1">
+                <ResizablePanelGroup orientation="vertical" className="flex-1">
                   <ResizablePanel defaultSize={45} minSize={20}>
                     <div className="h-full overflow-auto">
                       <RequestEditor
