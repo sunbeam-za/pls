@@ -16,8 +16,8 @@ const mono = Geist_Mono({
 })
 
 export const metadata = {
-  title: 'pls — a tiny, beautiful api client',
-  description: 'pls is a tiny, beautiful api client. dev pilled. mac flavored.'
+  title: '“pls” — an agent-native request library',
+  description: '“pls” is an agent-native request library. collecting intelligence, in drips.'
 }
 
 export default function RootLayout({ children }) {

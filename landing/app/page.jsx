@@ -13,12 +13,12 @@ export default function Page() {
             className="brand-mark"
             priority
           />
-          pls / v0.1
+          “pls” / v0.1
         </span>
         <span className="meta">an agent-native request library</span>
       </header>
 
-      <h1 className="wordmark">pls.</h1>
+      <h1 className="wordmark">“pls”</h1>
 
       <p className="tagline">
         an <em>agent-native</em> request library.<br />
@@ -26,7 +26,7 @@ export default function Page() {
       </p>
 
       <p className="lede">
-        agents make hundreds of http calls a day. pls catches each one, files it, and turns the
+        agents make hundreds of http calls a day. “pls” catches each one, files it, and turns the
         ambient traffic into a collection you can replay.
       </p>
 
@@ -37,13 +37,13 @@ export default function Page() {
             <span />
             <span />
           </div>
-          <span>~/ install pls</span>
+          <span>~/ install “pls”</span>
           <span>⌘</span>
         </div>
         <pre>
           <span className="c"># 1. install the app</span>
           {'\n'}
-          <span className="p">$ </span>git clone https://github.com/sunbeam/pls.git
+          <span className="p">$ </span>git clone https://github.com/sunbeam-za/pls.git
           {'\n'}
           <span className="p">$ </span>cd pls && npm install && npm run build:mac
           {'\n\n'}
@@ -56,15 +56,15 @@ export default function Page() {
           <span className="c"># that's it. open the app and watch it fill up.</span>
         </pre>
         <div className="cta-actions">
-          <a href="https://github.com/sunbeam/pls/releases">download for mac →</a>
-          <a href="https://github.com/sunbeam/pls">view on github →</a>
+          <a href="https://github.com/sunbeam-za/pls/releases">download for mac →</a>
+          <a href="https://github.com/sunbeam-za/pls">view on github →</a>
         </div>
       </section>
 
       <section className="section">
         <h2>— how it works</h2>
         <p className="prose">
-          agent fires a request through pls. pls renders it live, files it under the right host,
+          agent fires a request through “pls”. “pls” renders it live, files it under the right host,
           and lets you promote the good ones into named fixtures. next time the agent reaches for
           that endpoint, the fixture is already sitting there. <em>drip, file, recall.</em>
         </p>
@@ -75,7 +75,7 @@ export default function Page() {
         <ul className="bullets">
           <li>
             <b>mcp server.</b>
-            <span>claude, cursor, windsurf, codex — all send through pls.</span>
+            <span>claude, cursor, windsurf, codex — all send through “pls”.</span>
           </li>
           <li>
             <b>live feed.</b>
@@ -109,7 +109,7 @@ export default function Page() {
               <span />
               <span />
             </div>
-            <span>~/ a day with pls</span>
+            <span>~/ a day with “pls”</span>
             <span>⌘</span>
           </div>
           <pre>
@@ -143,8 +143,8 @@ export default function Page() {
         <h2>— get it</h2>
         <p className="prose">mac only for now. free. open source.</p>
         <div className="links">
-          <a href="https://github.com/sunbeam/pls/releases">↳ download for mac</a>
-          <a href="https://github.com/sunbeam/pls">↳ source on github</a>
+          <a href="https://github.com/sunbeam-za/pls/releases">↳ download for mac</a>
+          <a href="https://github.com/sunbeam-za/pls">↳ source on github</a>
         </div>
       </section>
 
