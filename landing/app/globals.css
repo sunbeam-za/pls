@@ -5,11 +5,16 @@
 }
 
 :root {
-  --bg: #f4f1ea;
+  --bg: #ffffff;
   --ink: #1a1a1a;
   --rule: #1a1a1a;
-  --muted: #6b675f;
+  --muted: #8a857c;
   --accent: #d93f0b;
+
+  /* only three text sizes */
+  --t-xl: 200px; /* wordmark */
+  --t-md: 26px; /* tagline */
+  --t-base: 16px; /* everything else */
 }
 
 html,
@@ -18,6 +23,9 @@ body {
   color: var(--ink);
   font-family: var(--font-serif), 'Charter', 'Iowan Old Style', 'Times New Roman', serif;
   font-feature-settings: 'kern', 'liga', 'dlig';
+  font-size: var(--t-base);
+  line-height: 1.5;
+  letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -40,8 +48,6 @@ body {
   align-items: baseline;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-  letter-spacing: -0.01em;
 }
 
 .topbar .meta {
@@ -51,7 +57,7 @@ body {
 
 .wordmark {
   font-weight: 600;
-  font-size: 220px;
+  font-size: var(--t-xl);
   line-height: 0.78;
   letter-spacing: -0.09em;
   margin-top: 36px;
@@ -59,8 +65,8 @@ body {
 }
 
 .tagline {
-  font-size: 28px;
-  line-height: 1.15;
+  font-size: var(--t-md);
+  line-height: 1.18;
   letter-spacing: -0.035em;
   margin-top: 28px;
   max-width: 18ch;
@@ -73,17 +79,10 @@ body {
 
 .lede {
   margin-top: 32px;
-  font-size: 19px;
-  line-height: 1.5;
-  letter-spacing: -0.02em;
-  max-width: 58ch;
-  color: var(--ink);
+  max-width: 60ch;
 }
 
 .prose {
-  font-size: 18px;
-  line-height: 1.55;
-  letter-spacing: -0.02em;
   max-width: 60ch;
   margin-bottom: 14px;
 }
@@ -92,10 +91,13 @@ body {
   margin-bottom: 0;
 }
 
-.prose code {
+.prose code,
+.cta pre {
   font-family: var(--font-mono), ui-monospace, Menlo, monospace;
-  font-size: 14px;
   letter-spacing: -0.01em;
+}
+
+.prose code {
   background: rgba(26, 26, 26, 0.06);
   padding: 1px 6px;
   border-radius: 2px;
@@ -109,7 +111,7 @@ body {
 .cta {
   margin-top: 44px;
   border: 1px solid var(--rule);
-  background: #ffffff;
+  background: var(--bg);
 }
 
 .cta-head {
@@ -118,8 +120,6 @@ body {
   align-items: center;
   padding: 8px 14px;
   border-bottom: 1px solid var(--rule);
-  font-size: 12px;
-  letter-spacing: -0.005em;
   background: var(--ink);
   color: var(--bg);
 }
@@ -137,12 +137,9 @@ body {
 }
 
 .cta pre {
-  font-family: var(--font-mono), 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 14px;
   line-height: 1.7;
-  padding: 18px 18px;
+  padding: 18px;
   overflow-x: auto;
-  letter-spacing: -0.01em;
 }
 
 .cta pre .c {
@@ -164,8 +161,6 @@ body {
   flex: 1;
   text-align: center;
   padding: 14px;
-  font-size: 15px;
-  letter-spacing: -0.02em;
   color: var(--ink);
   text-decoration: none;
   font-weight: 500;
@@ -185,10 +180,7 @@ body {
 }
 
 .section h2 {
-  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
   color: var(--muted);
   font-style: italic;
   margin-bottom: 14px;
@@ -203,12 +195,6 @@ body {
   gap: 18px 32px;
 }
 
-.bullets li {
-  font-size: 18px;
-  letter-spacing: -0.025em;
-  line-height: 1.3;
-}
-
 .bullets li b {
   font-weight: 600;
 }
@@ -216,8 +202,6 @@ body {
 .bullets li span {
   display: block;
   color: var(--muted);
-  font-size: 15px;
-  letter-spacing: -0.02em;
   margin-top: 2px;
 }
 
@@ -229,8 +213,6 @@ body {
 }
 
 .cta-bottom .links a {
-  font-size: 18px;
-  letter-spacing: -0.025em;
   color: var(--ink);
   text-decoration: none;
   border-bottom: 1px solid transparent;
@@ -246,8 +228,6 @@ body {
   margin-top: 80px;
   padding-top: 14px;
   border-top: 1px solid var(--rule);
-  font-size: 12px;
-  letter-spacing: -0.005em;
   color: var(--muted);
   display: flex;
   justify-content: space-between;
@@ -255,11 +235,9 @@ body {
 }
 
 @media (max-width: 600px) {
-  .wordmark {
-    font-size: 130px;
-  }
-  .tagline {
-    font-size: 22px;
+  :root {
+    --t-xl: 120px;
+    --t-md: 22px;
   }
   .bullets {
     grid-template-columns: 1fr;
