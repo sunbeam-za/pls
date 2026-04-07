@@ -323,7 +323,83 @@ button.btn-ghost {
 }
 
 @media (max-width: 600px) {
+  :root {
+    --t-base: 16px;
+  }
+
+  body {
+    padding: 32px 18px 64px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .topbar .meta {
+    font-size: 13px;
+  }
+
+  .tagline {
+    margin-top: 32px;
+    font-size: 1.6rem;
+    line-height: 1.35;
+  }
+
+  .lede {
+    margin-top: 24px;
+  }
+
+  .section {
+    margin-top: 44px;
+  }
+
+  .cta {
+    margin-top: 32px;
+  }
+
+  .cta-head {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .cta pre {
+    font-size: 12px;
+    padding: 14px;
+    line-height: 1.6;
+  }
+
+  .cta-actions {
+    flex-direction: column;
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .btn-primary,
+  .btn-ghost {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .btn-primary {
+    justify-content: center;
+    gap: 14px;
+  }
+
   .bullets {
     grid-template-columns: 1fr;
+  }
+
+  .foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 56px;
+  }
+
+  .foot-meta {
+    font-size: 13px;
   }
 }
