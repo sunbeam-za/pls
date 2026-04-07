@@ -3,9 +3,8 @@
 import { useState } from 'react'
 
 // Mirrors src/renderer/src/components/McpHandoff.tsx — same provider tabs,
-// same favicon-driven brand tiles. We use DuckDuckGo's icon proxy here
-// because the marketing site is static and can't run the main-process
-// favicon fetcher the desktop app uses.
+// same favicon-driven brand tiles. The browser fetches each vendor's
+// /favicon.ico directly (no CORS issue for <img>).
 const PROVIDERS = [
   { id: 'claude-code', name: 'Claude Code', domain: 'claude.com', filename: 'CLAUDE.md' },
   { id: 'cursor', name: 'Cursor', domain: 'cursor.com', filename: '.cursorrules' },
@@ -14,7 +13,7 @@ const PROVIDERS = [
 ]
 
 function faviconUrl(domain) {
-  return `https://icons.duckduckgo.com/ip3/${domain}.ico`
+  return `https://${domain}/favicon.ico`
 }
 
 export default function AgentRulesBlock({ content }) {
