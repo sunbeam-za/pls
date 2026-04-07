@@ -264,6 +264,77 @@ button.btn-ghost {
   overflow-y: auto;
 }
 
+.agent-rules {
+  margin-top: 28px;
+}
+
+.agent-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.agent-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  font: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.04s ease;
+}
+
+.agent-tab:hover {
+  background: rgba(26, 26, 26, 0.04);
+}
+
+.agent-tab.is-active {
+  border-color: var(--ink);
+  background: rgba(26, 26, 26, 0.05);
+}
+
+.agent-tab:active {
+  transform: translateY(1px);
+}
+
+.agent-tab-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(26, 26, 26, 0.12);
+}
+
+.agent-tab.is-active .agent-tab-tile {
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+.agent-tab-tile img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.agent-tab-name {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.agent-rules-hint {
+  margin-bottom: 14px;
+}
+
 .section {
   margin-top: 56px;
 }
@@ -390,6 +461,15 @@ button.btn-ghost {
 
   .bullets {
     grid-template-columns: 1fr;
+  }
+
+  .agent-tabs {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .agent-tab-name {
+    font-size: 12px;
   }
 
   .foot {
