@@ -186,7 +186,7 @@ export function McpHandoffButton(): React.JSX.Element {
       >
         <div className="relative shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary/20 to-primary/5 text-primary ring-1 ring-primary/30">
-            <Star className="h-3.5 w-3.5 fill-current" />
+            <span className="text-[13px] leading-none">{SPARK}</span>
           </div>
           <span
             className={cn(
@@ -242,11 +242,11 @@ function HandoffDialog({
       <DialogContent className="max-w-xl gap-4 overflow-hidden">
         <DialogHeader className="min-w-0 space-y-1">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-primary">{SPARK}</span>
             Connect your AI
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Pick a client and paste the snippet. Your AI can then list, read, and run your saved requests.
+            Pick a client, paste the snippet, and your AI can drive your saved requests.
           </DialogDescription>
         </DialogHeader>
 
@@ -262,7 +262,7 @@ function HandoffDialog({
           </div>
         )}
 
-        <div className="grid min-w-0 grid-cols-4 gap-2">
+        <div className="grid min-w-0 grid-cols-4 gap-1.5">
           {CLIENTS.map((client) => {
             const active = client.id === selectedId
             const installed = client.installedKey && info?.installed[client.installedKey]
@@ -272,7 +272,7 @@ function HandoffDialog({
                 type="button"
                 onClick={() => setSelectedId(client.id)}
                 className={cn(
-                  'group relative flex min-w-0 flex-col items-center gap-2 rounded-lg border p-2.5 text-center transition',
+                  'group relative flex min-w-0 flex-col items-center gap-2 rounded-xl border px-2 py-3 text-center transition',
                   active
                     ? 'border-primary/60 bg-primary/5'
                     : 'border-border bg-card/50 hover:border-border/80 hover:bg-card'
@@ -281,7 +281,7 @@ function HandoffDialog({
                 <BrandTile client={client} active={active} />
                 <div
                   className={cn(
-                    'truncate text-[11px] leading-none font-medium',
+                    'w-full truncate text-[10.5px] leading-none font-medium',
                     active ? 'text-foreground' : 'text-muted-foreground'
                   )}
                 >
