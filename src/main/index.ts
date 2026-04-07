@@ -3,113 +3,152 @@ import { join } from 'path'
 import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import {
+  createStorageAdapter,
+  parseStorageSpecFromEnv,
+  type StorageAdapter,
+  type Store
+} from '../shared/store'
+import {
+  createHttpAdapter,
+  parseHttpSpecFromEnv,
+  type HttpAdapter,
+  type SendRequestPayload,
+  type SendRequestResult
+} from '../shared/http'
 
 // Set the app name as early as possible so the macOS menu and dock show "pls"
 // (in dev, electron defaults this to "Electron").
 app.setName('pls')
 
 // ---------- Storage ----------
-// Single JSON file in userData with all collections + requests.
-// Simple, atomic, no migrations needed for v0.
+// Storage is pluggable. By default the app uses a filesystem adapter at
+// userData/pls-store.json — the same file the standalone MCP server reads.
+// Setting PLS_STORAGE_SPEC at launch swaps in any other adapter the factory
+// knows about (memory, a custom one, etc.), which is handy for tests and
+// ephemeral demo sessions.
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+const defaultStorePath = (): string => join(app.getPath('userData'), 'pls-store.json')
 
-interface RequestItem {
-  id: string
-  name: string
-  method: HttpMethod
-  url: string
-  headers: { key: string; value: string; enabled: boolean }[]
-  body: string
+let _storage: StorageAdapter | null = null
+const storage = (): StorageAdapter => {
+  if (_storage) return _storage
+  const fromEnv = parseStorageSpecFromEnv(process.env)
+  _storage = createStorageAdapter(fromEnv ?? { type: 'filesystem', path: defaultStorePath() })
+  return _storage
 }
 
-// Collection shape is structurally compatible with the renderer's richer type
-// (`openapi` + `spec` fields). The main process never needs to inspect those,
-// so we keep it loose here and let renderer own the full types.
-interface Collection {
-  id: string
-  name: string
-  requests: RequestItem[]
-  [key: string]: unknown
+let _http: HttpAdapter | null = null
+const http = (): HttpAdapter => {
+  if (_http) return _http
+  _http = createHttpAdapter(parseHttpSpecFromEnv(process.env) ?? { type: 'fetch' })
+  return _http
 }
 
-interface Store {
-  collections: Collection[]
+const readStore = (): Promise<Store> => storage().read()
+const writeStore = (store: Store): Promise<void> => storage().write(store)
+
+// ---------- MCP handoff ----------
+// The handoff widget in the renderer needs to tell the user how to wire
+// pls into their AI client. That snippet requires an absolute path to the
+// bundled MCP server binary. Resolving it lives here because only the main
+// process has a reliable view of `app.getAppPath()` / `process.resourcesPath`.
+
+interface McpInfo {
+  command: string
+  args: string[]
+  /** True if the bundled MCP server file actually exists on disk right now. */
+  ready: boolean
+  /** Which well-known AI clients seem to be installed. */
+  installed: { claudeDesktop: boolean; cursor: boolean; claudeCode: boolean }
 }
 
-const storePath = (): string => join(app.getPath('userData'), 'pls-store.json')
-
-async function readStore(): Promise<Store> {
-  try {
-    const raw = await fs.readFile(storePath(), 'utf-8')
-    return JSON.parse(raw) as Store
-  } catch {
-    return { collections: [] }
+function resolveMcpEntry(): string {
+  // In dev, `npm run dev` doesn't rebuild the MCP server; users run
+  // `npm run build:mcp` once. Point at the repo's `out/mcp/pls-mcp.mjs`.
+  if (is.dev) {
+    return join(app.getAppPath(), 'out', 'mcp', 'pls-mcp.mjs')
   }
+  // Packaged: the MCP build lives inside the asar alongside the main bundle,
+  // but Node can't execute from inside asar, so electron-builder must unpack
+  // it. We point at resourcesPath/app.asar.unpacked/out/mcp/pls-mcp.mjs as
+  // the eventual target — see electron-builder `asarUnpack` config.
+  return join(process.resourcesPath, 'app.asar.unpacked', 'out', 'mcp', 'pls-mcp.mjs')
 }
 
-async function writeStore(store: Store): Promise<void> {
-  const path = storePath()
-  const tmp = path + '.tmp'
-  await fs.writeFile(tmp, JSON.stringify(store, null, 2), 'utf-8')
-  await fs.rename(tmp, path)
+// ---------- Favicon fetcher ----------
+// The renderer's CSP blocks remote images (img-src 'self' data:), and
+// relaxing it feels worse than just proxying through main. We fetch each
+// vendor's own favicon directly, cache per session, and ship back a data
+// URL — which does pass the CSP. One-off per domain; no network calls
+// after the first successful fetch.
+
+const faviconCache = new Map<string, string>()
+
+async function fetchFavicon(domain: string): Promise<string | null> {
+  const cached = faviconCache.get(domain)
+  if (cached !== undefined) return cached
+  // Try a few common paths before giving up — some sites don't serve
+  // /favicon.ico but do have the high-res Apple touch icon or a /favicon.png.
+  const candidates = [
+    `https://${domain}/favicon.ico`,
+    `https://${domain}/favicon.png`,
+    `https://${domain}/apple-touch-icon.png`
+  ]
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { redirect: 'follow' })
+      if (!res.ok) continue
+      const contentType = res.headers.get('content-type') ?? 'image/x-icon'
+      // Reject HTML error pages masquerading as 200s.
+      if (contentType.includes('text/html')) continue
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length === 0) continue
+      const dataUrl = `data:${contentType};base64,${buf.toString('base64')}`
+      faviconCache.set(domain, dataUrl)
+      return dataUrl
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  faviconCache.set(domain, '') // negative cache to avoid retries this session
+  return null
 }
 
-// ---------- HTTP ----------
-
-interface SendRequestPayload {
-  method: HttpMethod
-  url: string
-  headers: { key: string; value: string; enabled: boolean }[]
-  body: string
-}
-
-interface SendRequestResult {
-  ok: boolean
-  status: number
-  statusText: string
-  headers: Record<string, string>
-  body: string
-  durationMs: number
-  size: number
-  error?: string
-}
-
-async function sendRequest(payload: SendRequestPayload): Promise<SendRequestResult> {
-  const start = Date.now()
+async function getMcpInfo(): Promise<McpInfo> {
+  const entry = resolveMcpEntry()
+  let ready = false
   try {
-    const headers = new Headers()
-    for (const h of payload.headers) {
-      if (h.enabled && h.key.trim()) headers.set(h.key, h.value)
+    await fs.access(entry)
+    ready = true
+  } catch {
+    ready = false
+  }
+  const home = app.getPath('home')
+  const exists = async (p: string): Promise<boolean> => {
+    try {
+      await fs.access(p)
+      return true
+    } catch {
+      return false
     }
-    const init: RequestInit = { method: payload.method, headers }
-    if (payload.body && !['GET', 'HEAD'].includes(payload.method)) {
-      init.body = payload.body
-    }
-    const res = await fetch(payload.url, init)
-    const text = await res.text()
-    const respHeaders: Record<string, string> = {}
-    res.headers.forEach((v, k) => (respHeaders[k] = v))
-    return {
-      ok: res.ok,
-      status: res.status,
-      statusText: res.statusText,
-      headers: respHeaders,
-      body: text,
-      durationMs: Date.now() - start,
-      size: new TextEncoder().encode(text).length
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      statusText: '',
-      headers: {},
-      body: '',
-      durationMs: Date.now() - start,
-      size: 0,
-      error: err instanceof Error ? err.message : String(err)
-    }
+  }
+  // Best-effort detection. False negatives are fine — we always show the
+  // manual instructions too.
+  const [claudeDesktop, cursor, claudeCode] = await Promise.all([
+    exists(join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')),
+    exists('/Applications/Cursor.app'),
+    // Claude Code CLI — presence of the user config dir is a decent signal.
+    exists(join(home, '.claude'))
+  ])
+  // Always report plain `node` as the command: the external AI client runs
+  // the server in its own process, and Electron's embedded Node isn't on
+  // PATH as `node`. Users need a system Node install.
+  return {
+    command: 'node',
+    args: [entry],
+    ready,
+    installed: { claudeDesktop, cursor, claudeCode }
   }
 }
 
@@ -217,9 +256,15 @@ app.whenReady().then(() => {
     await writeStore(store)
     return true
   })
-  ipcMain.handle('http:send', async (_e, payload: SendRequestPayload) => sendRequest(payload))
+  ipcMain.handle('http:send', async (_e, payload: SendRequestPayload): Promise<SendRequestResult> =>
+    http().send(payload)
+  )
   ipcMain.handle('openapi:loadFromUrl', async (_e, url: string) => loadSpecFromUrl(url))
   ipcMain.handle('openapi:loadFromFile', async () => loadSpecFromFile())
+  ipcMain.handle('mcp:info', async (): Promise<McpInfo> => getMcpInfo())
+  ipcMain.handle('favicon:get', async (_e, domain: string): Promise<string | null> =>
+    fetchFavicon(domain)
+  )
 
   createWindow()
 

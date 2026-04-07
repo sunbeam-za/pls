@@ -1,5 +1,6 @@
 import {
   ChevronRight,
+  Clock,
   FileDown,
   FolderPlus,
   Link2,
@@ -22,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import type { Collection, RequestItem } from '@/lib/storage'
 import { useState } from 'react'
+import { McpHandoffButton } from '@/components/McpHandoff'
 
 interface SidebarProps {
   collections: Collection[]
@@ -37,6 +39,8 @@ interface SidebarProps {
   onSyncOpenApi: (collectionId: string) => void
   onUnlinkOpenApi: (collectionId: string) => void
   syncingCollectionId: string | null
+  onOpenHistory: () => void
+  historyCount: number
 }
 
 function formatSyncTime(ts: number): string {
@@ -71,7 +75,9 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
     onImportOpenApi,
     onSyncOpenApi,
     onUnlinkOpenApi,
-    syncingCollectionId
+    syncingCollectionId,
+    onOpenHistory,
+    historyCount
   } = props
 
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -95,6 +101,18 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
           className="flex items-center gap-0.5"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-7 w-7"
+            onClick={onOpenHistory}
+            title={historyCount ? `History (${historyCount})` : 'History'}
+          >
+            <Clock className="h-4 w-4" />
+            {historyCount > 0 && (
+              <span className="pointer-events-none absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+            )}
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -279,6 +297,9 @@ export function Sidebar(props: SidebarProps): React.JSX.Element {
           )}
         </div>
       </ScrollArea>
+      <div className="shrink-0 border-t border-sidebar-border pt-2">
+        <McpHandoffButton />
+      </div>
     </div>
   )
 }

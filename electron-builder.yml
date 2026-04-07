@@ -11,6 +11,12 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # The MCP server is launched by external AI clients (Claude Desktop, Cursor,
+  # etc.) as a plain `node out/mcp/pls-mcp.mjs` subprocess. Node can't execute
+  # files from inside an asar archive, so we unpack the whole MCP bundle to
+  # app.asar.unpacked/out/mcp/ — which is exactly what resolveMcpEntry() in
+  # src/main/index.ts points at in packaged builds.
+  - out/mcp/**
 win:
   executableName: pls
 nsis:

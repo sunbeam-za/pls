@@ -1,0 +1,5 @@
+export * from './types.js'
+export type { StorageAdapter } from './adapter.js'
+export { createFileSystemAdapter } from './adapters/filesystem.js'
+export { createMemoryAdapter } from './adapters/memory.js'
+export { createStorageAdapter, parseStorageSpecFromEnv, type StorageSpec } from './factory.js'

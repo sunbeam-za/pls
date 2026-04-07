@@ -67,8 +67,30 @@ export interface Collection {
   openapi?: OpenApiLink
 }
 
+export interface HistoryEntry {
+  id: string
+  sentAt: number
+  requestId?: string
+  requestName?: string
+  method: HttpMethod
+  url: string
+  headers: HeaderEntry[]
+  body: string
+  response: {
+    ok: boolean
+    status: number
+    statusText: string
+    durationMs: number
+    size: number
+    error?: string
+    bodyPreview: string
+    bodyTruncated: boolean
+  }
+}
+
 export interface Store {
   collections: Collection[]
+  history?: HistoryEntry[]
 }
 
 export interface LoadSpecResult {
@@ -97,6 +119,13 @@ export interface SendRequestResult {
   error?: string
 }
 
+export interface McpInfo {
+  command: string
+  args: string[]
+  ready: boolean
+  installed: { claudeDesktop: boolean; cursor: boolean; claudeCode: boolean }
+}
+
 const api = {
   readStore: (): Promise<Store> => ipcRenderer.invoke('store:read'),
   writeStore: (store: Store): Promise<boolean> => ipcRenderer.invoke('store:write', store),
@@ -104,7 +133,10 @@ const api = {
     ipcRenderer.invoke('http:send', payload),
   loadSpecFromUrl: (url: string): Promise<LoadSpecResult> =>
     ipcRenderer.invoke('openapi:loadFromUrl', url),
-  loadSpecFromFile: (): Promise<LoadSpecResult> => ipcRenderer.invoke('openapi:loadFromFile')
+  loadSpecFromFile: (): Promise<LoadSpecResult> => ipcRenderer.invoke('openapi:loadFromFile'),
+  mcpInfo: (): Promise<McpInfo> => ipcRenderer.invoke('mcp:info'),
+  getFavicon: (domain: string): Promise<string | null> =>
+    ipcRenderer.invoke('favicon:get', domain)
 }
 
 if (process.contextIsolated) {

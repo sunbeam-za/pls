@@ -11,6 +11,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { RequestEditor } from '@/components/RequestEditor'
 import { ResponseViewer } from '@/components/ResponseViewer'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
+import { HistoryDialog } from '@/components/HistoryDialog'
 import {
   newCollection,
   newRequest,
@@ -19,16 +20,49 @@ import {
   type Store
 } from '@/lib/storage'
 import { resyncCollection } from '@/lib/openapi'
-import type { SendRequestResult } from '../../preload/index'
+import type { HistoryEntry, SendRequestResult } from '../../preload/index'
+
+const HISTORY_MAX = 200
+const HISTORY_BODY_MAX = 64 * 1024
+
+const recordHistoryEntry = (
+  request: RequestItem,
+  result: SendRequestResult
+): HistoryEntry => {
+  const body = result.body ?? ''
+  const truncated = body.length > HISTORY_BODY_MAX
+  return {
+    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    sentAt: Date.now(),
+    requestId: request.id,
+    requestName: request.name,
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body: request.body,
+    response: {
+      ok: result.ok,
+      status: result.status,
+      statusText: result.statusText,
+      durationMs: result.durationMs,
+      size: result.size,
+      error: result.error,
+      bodyPreview: truncated ? body.slice(0, HISTORY_BODY_MAX) : body,
+      bodyTruncated: truncated
+    }
+  }
+}
 
 function App(): React.JSX.Element {
   const [collections, setCollections] = useState<Collection[]>([])
+  const [history, setHistory] = useState<HistoryEntry[]>([])
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null)
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null)
   const [response, setResponse] = useState<SendRequestResult | null>(null)
   const [sending, setSending] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [syncingCollectionId, setSyncingCollectionId] = useState<string | null>(null)
   const persistTimer = useRef<number | null>(null)
 
@@ -42,6 +76,7 @@ function App(): React.JSX.Element {
       .then((store) => {
         if (cancelled) return
         setCollections(store.collections ?? [])
+        setHistory(store.history ?? [])
         setLoaded(true)
       })
       .catch((err) => {
@@ -59,7 +94,7 @@ function App(): React.JSX.Element {
     if (!loaded) return
     if (persistTimer.current) window.clearTimeout(persistTimer.current)
     persistTimer.current = window.setTimeout(() => {
-      const store: Store = { collections }
+      const store: Store = { collections, history }
       window.api.writeStore(store).catch((err) => {
         console.error('Failed to save', err)
         toast.error('Failed to save changes')
@@ -68,7 +103,7 @@ function App(): React.JSX.Element {
     return (): void => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current)
     }
-  }, [collections, loaded])
+  }, [collections, history, loaded])
 
   const activeRequest = useMemo<RequestItem | null>(() => {
     if (!activeRequestId) return null
@@ -240,6 +275,9 @@ function App(): React.JSX.Element {
         body: activeRequest.body
       })
       setResponse(res)
+      // Snapshot it into history — keep the newest HISTORY_MAX entries only.
+      const entry = recordHistoryEntry(activeRequest, res)
+      setHistory((prev) => [entry, ...prev].slice(0, HISTORY_MAX))
       if (res.error) {
         toast.error(res.error)
       }
@@ -250,6 +288,39 @@ function App(): React.JSX.Element {
       setSending(false)
     }
   }, [activeRequest, activeCollectionId])
+
+  // Replay a past send: reconstruct the SendRequestResult shape from the
+  // history snapshot and push it into the response viewer. Doesn't re-send.
+  const handleReplayHistory = useCallback((entry: HistoryEntry) => {
+    const result: SendRequestResult = {
+      ok: entry.response.ok,
+      status: entry.response.status,
+      statusText: entry.response.statusText,
+      headers: {},
+      body: entry.response.bodyPreview + (entry.response.bodyTruncated ? '\n\n… (truncated in history)' : ''),
+      durationMs: entry.response.durationMs,
+      size: entry.response.size,
+      error: entry.response.error
+    }
+    setResponse(result)
+    setHistoryOpen(false)
+    // If the original request is still around, select it so the editor
+    // matches the response the user is looking at.
+    if (entry.requestId) {
+      for (const c of collections) {
+        if (c.requests.some((r) => r.id === entry.requestId)) {
+          setActiveCollectionId(c.id)
+          setActiveRequestId(entry.requestId)
+          break
+        }
+      }
+    }
+  }, [collections])
+
+  const handleClearHistory = useCallback(() => {
+    setHistory([])
+    toast.success('History cleared')
+  }, [])
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -270,6 +341,8 @@ function App(): React.JSX.Element {
               onSyncOpenApi={handleSyncOpenApi}
               onUnlinkOpenApi={handleUnlinkOpenApi}
               syncingCollectionId={syncingCollectionId}
+              onOpenHistory={() => setHistoryOpen(true)}
+              historyCount={history.length}
             />
           </ResizablePanel>
           <ResizableHandle />
@@ -313,6 +386,13 @@ function App(): React.JSX.Element {
           open={importOpen}
           onOpenChange={setImportOpen}
           onImported={handleOpenApiImported}
+        />
+        <HistoryDialog
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          entries={history}
+          onReplay={handleReplayHistory}
+          onClear={handleClearHistory}
         />
         <Toaster theme="dark" />
       </div>
