@@ -146,7 +146,6 @@ export default function Page() {
       </section>
 
       <footer className="foot">
-        <span>built so the http your agents make stops being throwaway.</span>
         <span className="brand">
           © 2026 —{' '}
           <Image
