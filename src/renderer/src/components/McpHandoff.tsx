@@ -7,7 +7,7 @@
 // ever one network call per domain.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Copy, Sparkles, X } from 'lucide-react'
+import { Check, Copy, Sparkles, Star, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -179,7 +179,7 @@ export function McpHandoffButton(): React.JSX.Element {
       >
         <div className="relative shrink-0">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-primary/20 to-primary/5 text-primary ring-1 ring-primary/30">
-            <Sparkles className="h-3.5 w-3.5" />
+            <Star className="h-3.5 w-3.5 fill-current" />
           </div>
           <span
             className={cn(
